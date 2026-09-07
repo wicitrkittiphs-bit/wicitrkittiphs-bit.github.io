@@ -1,516 +1,237 @@
 <!DOCTYPE html>
-<html lang="th" class="h-full">
+<html lang="th" class="dark">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>UNO คลาสสิกขาวดำ</title>
-    <!-- Tailwind CSS -->
+    <title>UNO Multiplayer & Bots (Monochrome Edition)</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <style>
-        body { font-family: 'Sarabun', sans-serif; background-color: #0f0f0f; color: #f3f4f6; }
-        .uno-card {
-            transition: transform 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275), box-shadow 0.25s ease;
-            border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.5); position: relative; overflow: hidden; background: #18181b;
-        }
-        .uno-card:hover { transform: translateY(-12px) scale(1.03); box-shadow: 0 20px 25px -5px rgba(255, 255, 255, 0.15); }
-        .uno-card-back { background: linear-gradient(135deg, #18181b 0%, #09090b 100%); border: 2px solid #3f3f46; border-radius: 12px; display: flex; align-items: center; justify-content: center; }
-        .uno-card-back-inner { width: 75%; height: 82%; border: 1px dashed #52525b; border-radius: 8px; display: flex; flex-direction: column; align-items: center; justify-content: center; background: #000000; }
-        ::-webkit-scrollbar { width: 6px; height: 6px; }
-        ::-webkit-scrollbar-track { background: #1a1a1a; }
-        ::-webkit-scrollbar-thumb { background: #4a4a4a; border-radius: 3px; }
-    </style>
-</head>
-<body class="h-full flex flex-col antialiased selection:bg-white selection:text-black">
-
-    <div id="app" class="flex-1 flex flex-col h-full overflow-hidden">
-        <header class="flex items-center justify-between px-6 py-4 border-b border-zinc-800 bg-zinc-950/80 backdrop-blur z-20">
-            <div class="flex items-center space-x-3">
-                <div class="w-10 h-10 rounded-xl bg-white text-black flex items-center justify-center font-bold text-xl tracking-tighter shadow-lg">UNO</div>
-                <div>
-                    <h1 class="font-bold text-lg leading-tight tracking-wide">เกมอูโน่ขาวดำ (Monochrome Uno)</h1>
-                    <p class="text-xs text-zinc-400">รองรับ 2-6 คน พร้อมบอทและการ์ดพิเศษภาษาไทย</p>
-                </div>
-            </div>
-            <div id="header-actions" class="hidden flex items-center space-x-3">
-                <span id="room-badge" class="px-3 py-1 bg-zinc-900 border border-zinc-700 text-xs rounded-full font-mono text-zinc-300"></span>
-                <button onclick="leaveRoom()" class="px-3 py-1.5 bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 rounded-lg text-xs font-medium transition text-zinc-300 hover:text-white">ออกจากห้อง</button>
-            </div>
-        </header>
-
-        <main class="flex-1 overflow-y-auto relative flex flex-col">
-            <!-- SCREEN 1: LOBBY -->
-            <div id="screen-lobby" class="flex-1 flex items-center justify-center p-6">
-                <div class="w-full max-w-md bg-zinc-900/90 border border-zinc-800 rounded-2xl p-8 shadow-2xl backdrop-blur-md">
-                    <div class="text-center mb-8">
-                        <h2 class="text-2xl font-bold tracking-tight mb-2">เข้าสู่ห้องเล่นเกม</h2>
-                        <p class="text-sm text-zinc-400">สร้างห้องใหม่ด้วยรหัสผ่าน หรือเข้าร่วมห้องของเพื่อน</p>
-                    </div>
-                    <div class="space-y-5">
-                        <div>
-                            <label class="block text-xs font-medium text-zinc-400 uppercase tracking-wider mb-2">ชื่อผู้เล่นของคุณ</label>
-                            <input type="text" id="input-username" placeholder="ระบุชื่อของคุณ..." value="ผู้เล่น" maxlength="15" class="w-full bg-zinc-950 border border-zinc-700 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-white transition">
-                        </div>
-                        <div class="grid grid-cols-2 gap-3 pt-2">
-                            <button onclick="showCreateRoomModal()" class="w-full py-3.5 bg-white text-black font-semibold rounded-xl hover:bg-zinc-200 transition text-sm">สร้างห้องใหม่</button>
-                            <button onclick="showJoinRoomModal()" class="w-full py-3.5 bg-zinc-800 hover:bg-zinc-700 text-white font-semibold rounded-xl border border-zinc-700 transition text-sm">เข้าร่วมห้อง</button>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- SCREEN 2: WAITING ROOM -->
-            <div id="screen-room" class="hidden flex-1 flex flex-col items-center justify-center p-6">
-                <div class="w-full max-w-xl bg-zinc-900/90 border border-zinc-800 rounded-2xl p-8 shadow-2xl">
-                    <div class="flex items-center justify-between pb-6 border-b border-zinc-800 mb-6">
-                        <div>
-                            <span class="text-xs text-zinc-400 uppercase tracking-widest block mb-1">รหัสห้อง (Room Code)</span>
-                            <div id="display-room-code" class="text-3xl font-mono font-bold tracking-wider text-white">----</div>
-                        </div>
-                        <button onclick="copyRoomCode()" class="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-xs font-medium rounded-lg border border-zinc-700 transition">คัดลอกรหัส</button>
-                    </div>
-                    <div class="mb-6">
-                        <div class="flex items-center justify-between mb-3">
-                            <h3 class="text-sm font-semibold text-zinc-300">รายชื่อผู้เล่นในห้อง (<span id="player-count">0</span>/6)</h3>
-                            <button onclick="addBotPlayer()" class="text-xs text-zinc-400 hover:text-white underline transition">+ เพิ่มบอท AI</button>
-                        </div>
-                        <div id="room-players-list" class="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-60 overflow-y-auto pr-1"></div>
-                    </div>
-                    <div class="flex space-x-3 pt-4 border-t border-zinc-800">
-                        <button onclick="leaveRoom()" class="w-1/3 py-3 bg-zinc-800 hover:bg-zinc-700 font-semibold rounded-xl text-sm border border-zinc-700">ออกจากห้อง</button>
-                        <button id="btn-start-game" onclick="startGame()" class="w-2/3 py-3 bg-white text-black font-semibold rounded-xl hover:bg-zinc-200 transition text-sm shadow-lg">เริ่มเกม</button>
-                    </div>
-                </div>
-            </div>
-
-            <!-- SCREEN 3: GAME BOARD -->
-            <div id="screen-game" class="hidden flex-1 flex flex-col h-full overflow-hidden">
-                <div class="bg-zinc-950/60 border-b border-zinc-800/80 px-4 py-3">
-                    <div id="opponents-container" class="flex items-center justify-center space-x-4 overflow-x-auto py-1"></div>
-                </div>
-                <div class="flex-1 flex flex-col md:flex-row items-center justify-center p-6 relative overflow-hidden bg-gradient-to-b from-zinc-950 to-zinc-900">
-                    <div class="flex flex-col md:flex-row items-center justify-center space-y-6 md:space-y-0 md:space-x-12 my-auto">
-                        <div onclick="drawCard()" class="flex flex-col items-center">
-                            <div class="w-24 h-36 uno-card-back cursor-pointer group hover:scale-105 transition">
-                                <div class="uno-card-back-inner">
-                                    <span class="font-black text-sm tracking-widest text-white">UNO</span>
-                                    <span class="text-[9px] text-zinc-400 mt-1">จั่วการ์ด</span>
-                                </div>
-                            </div>
-                            <span class="text-xs text-zinc-400 mt-2 font-medium">กองจั่ว (<span id="deck-count">0</span>)</span>
-                        </div>
-                        <div class="flex flex-col items-center text-center">
-                            <div id="turn-direction-indicator" class="w-12 h-12 rounded-full border border-zinc-700 bg-zinc-900 flex items-center justify-center mb-2 shadow-inner text-white font-bold text-lg">↻</div>
-                            <div id="game-status-text" class="text-sm font-medium text-zinc-200">รอบของ...</div>
-                            <div id="active-color-badge" class="mt-1 px-2.5 py-0.5 rounded text-[10px] uppercase font-bold tracking-wider bg-zinc-800 text-zinc-300 border border-zinc-700">สีปัจจุบัน: -</div>
-                        </div>
-                        <div class="flex flex-col items-center">
-                            <div id="discard-pile" class="w-24 h-36 uno-card shadow-2xl relative flex items-center justify-center"></div>
-                            <span class="text-xs text-zinc-400 mt-2 font-medium">กองทิ้ง</span>
-                        </div>
-                    </div>
-                    <div id="game-alert-banner" class="absolute top-4 left-1/2 -translate-x-1/2 bg-zinc-900/95 border border-zinc-700 px-5 py-2.5 rounded-full text-xs font-medium text-zinc-200 shadow-xl transition-all duration-300 opacity-0 pointer-events-none z-30">ประกาศ</div>
-                </div>
-                <div class="bg-zinc-950 border-t border-zinc-800 p-4 flex flex-col">
-                    <div class="flex items-center justify-between mb-2 px-2">
-                        <div class="flex items-center space-x-3">
-                            <span class="text-xs font-semibold text-zinc-300 uppercase tracking-wider">การ์ดในมือคุณ (<span id="my-card-count">0</span>)</span>
-                            <button onclick="sayUno()" class="px-3 py-1 bg-white text-black text-xs font-bold rounded-lg hover:bg-zinc-200 transition shadow">อูโน่! (UNO)</button>
-                        </div>
-                        <button onclick="passTurn()" id="btn-pass" class="px-3 py-1 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-xs text-zinc-300 rounded-lg transition hidden">ผ่านตา</button>
-                    </div>
-                    <div id="my-hand-container" class="flex items-center space-x-3 overflow-x-auto py-3 px-2 min-h-[160px]"></div>
-                </div>
-            </div>
-        </main>
-    </div>
-
-    <!-- MODALS -->
-    <div id="modal-create-room" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
-        <div class="bg-zinc-900 border border-zinc-800 rounded-2xl w-full max-w-sm p-6 shadow-2xl">
-            <h3 class="text-lg font-bold mb-4">สร้างห้องใหม่</h3>
-            <input type="text" id="input-create-code" class="w-full bg-zinc-950 border border-zinc-700 rounded-xl px-4 py-2.5 text-sm font-mono mb-4" placeholder="ระบุรหัสห้อง 4 หลัก">
-            <div class="flex space-x-3">
-                <button onclick="closeModals()" class="w-1/2 py-2.5 bg-zinc-800 rounded-xl text-xs">ยกเลิก</button>
-                <button onclick="confirmCreateRoom()" class="w-1/2 py-2.5 bg-white text-black font-semibold rounded-xl text-xs">สร้างห้อง</button>
-            </div>
-        </div>
-    </div>
-
-    <div id="modal-join-room" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
-        <div class="bg-zinc-900 border border-zinc-800 rounded-2xl w-full max-w-sm p-6 shadow-2xl">
-            <h3 class="text-lg font-bold mb-4">เข้าร่วมห้อง</h3>
-            <input type="text" id="input-join-code" placeholder="กรอกรหัสห้องเพื่อน..." class="w-full bg-zinc-950 border border-zinc-700 rounded-xl px-4 py-2.5 text-sm font-mono mb-4 uppercase">
-            <div class="flex space-x-3">
-                <button onclick="closeModals()" class="w-1/2 py-2.5 bg-zinc-800 rounded-xl text-xs">ยกเลิก</button>
-                <button onclick="confirmJoinRoom()" class="w-1/2 py-2.5 bg-white text-black font-semibold rounded-xl text-xs">เข้าร่วม</button>
-            </div>
-        </div>
-    </div>
-
-    <div id="modal-color-picker" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
-        <div class="bg-zinc-900 border border-zinc-800 rounded-2xl w-full max-w-sm p-6 text-center shadow-2xl">
-            <h3 class="text-lg font-bold mb-2">เลือกสีการ์ด</h3>
-            <div class="grid grid-cols-2 gap-3 mt-4">
-                <button onclick="selectWildColor('red')" class="p-4 bg-zinc-800 border-2 border-red-500 rounded-xl font-bold text-red-400">สีแดง</button>
-                <button onclick="selectWildColor('blue')" class="p-4 bg-zinc-800 border-2 border-blue-500 rounded-xl font-bold text-blue-400">สีฟ้า</button>
-                <button onclick="selectWildColor('green')" class="p-4 bg-zinc-800 border-2 border-green-500 rounded-xl font-bold text-green-400">สีเขียว</button>
-                <button onclick="selectWildColor('yellow')" class="p-4 bg-zinc-800 border-2 border-yellow-500 rounded-xl font-bold text-yellow-400">สีเหลือง</button>
-            </div>
-        </div>
-    </div>
-
-    <div id="modal-game-over" class="fixed inset-0 bg-black/90 backdrop-blur-md z-50 flex items-center justify-center p-4 hidden">
-        <div class="bg-zinc-900 border border-zinc-800 rounded-2xl w-full max-w-md p-8 text-center shadow-2xl">
-            <div class="w-16 h-16 bg-white text-black rounded-2xl mx-auto flex items-center justify-center text-3xl font-bold mb-4">👑</div>
-            <h3 class="text-2xl font-bold mb-2" id="winner-title">ผู้ชนะ!</h3>
-            <button onclick="returnToRoom()" class="w-full py-3.5 bg-white text-black font-semibold rounded-xl text-sm">กลับสู่ห้องรอ</button>
-        </div>
-    </div>
-
     <script>
-        const COLORS = ['red', 'blue', 'green', 'yellow'];
-        const COLOR_NAMES_TH = { red: 'สีแดง', blue: 'สีฟ้า', green: 'สีเขียว', yellow: 'สีเหลือง', wild: 'อิสระ' };
-
-        let gameState = {
-            roomCode: '',
-            isHost: false,
-            players: [],
-            myPlayerId: 'p_' + Math.random().toString(36).substring(2, 7),
-            myName: 'ผู้เล่น',
-            turnIndex: 0,
-            direction: 1,
-            deck: [],
-            discardPile: [],
-            activeColor: 'red',
-            gameActive: false,
-            hasDrawnThisTurn: false
-        };
-
-        function showAlert(msg) {
-            const banner = document.getElementById('game-alert-banner');
-            banner.textContent = msg;
-            banner.style.opacity = '1';
-            banner.style.transform = 'translate(-50%, 10px)';
-            setTimeout(() => { banner.style.opacity = '0'; banner.style.transform = 'translate(-50%, 0)'; }, 3000);
-        }
-
-        function switchScreen(id) {
-            ['screen-lobby', 'screen-room', 'screen-game'].forEach(s => document.getElementById(s).classList.add('hidden'));
-            document.getElementById(id).classList.remove('hidden');
-            document.getElementById('header-actions').classList.toggle('hidden', id === 'screen-lobby');
-        }
-
-        function closeModals() {
-            ['modal-create-room', 'modal-join-room', 'modal-color-picker', 'modal-game-over'].forEach(m => document.getElementById(m).classList.add('hidden'));
-        }
-
-        function showCreateRoomModal() {
-            document.getElementById('input-create-code').value = Math.floor(1000 + Math.random() * 9000);
-            document.getElementById('modal-create-room').classList.remove('hidden');
-        }
-
-        function showJoinRoomModal() {
-            document.getElementById('input-join-code').value = '';
-            document.getElementById('modal-join-room').classList.remove('hidden');
-        }
-
-        function confirmCreateRoom() {
-            const code = document.getElementById('input-create-code').value.trim() || '1234';
-            gameState.myName = document.getElementById('input-username').value.trim() || 'ผู้เล่น';
-            gameState.roomCode = code;
-            gameState.isHost = true;
-            gameState.players = [{ id: gameState.myPlayerId, name: gameState.myName, isBot: false, hand: [] }];
-
-            // บันทึกห้องเจาะจงด้วยคีย์ห้องนี้จริง ๆ
-            localStorage.setItem('uno_my_room_' + code, JSON.stringify(gameState));
-            closeModals();
-            updateRoomUI();
-            switchScreen('screen-room');
-            showAlert('สร้างห้องสำเร็จ! รหัสห้อง: ' + code);
-            startRoomSync();
-        }
-
-        function confirmJoinRoom() {
-            const code = document.getElementById('input-join-code').value.trim().toUpperCase();
-            gameState.myName = document.getElementById('input-username').value.trim() || 'ผู้เล่น';
-            if (!code) { showAlert('กรุณากรอกรหัสห้อง'); return; }
-
-            let roomDataStr = localStorage.getItem('uno_my_room_' + code);
-            if (!roomDataStr) {
-                showAlert('ไม่พบห้องรหัส "' + code + '" กรุณาตรวจสอบรหัสอีกครั้ง');
-                return;
-            }
-
-            let hostRoom = JSON.parse(roomDataStr);
-            gameState.roomCode = code;
-            gameState.isHost = false;
-            gameState.players = hostRoom.players;
-
-            // ตรวจสอบว่ามีตัวเราอยู่ในห้องแล้วหรือยัง
-            if (!gameState.players.some(p => p.id === gameState.myPlayerId)) {
-                if (gameState.players.length >= 6) { showAlert('ห้องเต็มแล้ว (สูงสุด 6 คน)'); return; }
-                gameState.players.push({ id: gameState.myPlayerId, name: gameState.myName, isBot: false, hand: [] });
-            }
-
-            hostRoom.players = gameState.players;
-            localStorage.setItem('uno_my_room_' + code, JSON.stringify(hostRoom));
-
-            closeModals();
-            updateRoomUI();
-            switchScreen('screen-room');
-            showAlert('เข้าร่วมห้องสำเร็จ!');
-            startRoomSync();
-        }
-
-        let syncInterval = null;
-        function startRoomSync() {
-            if (syncInterval) clearInterval(syncInterval);
-            syncInterval = setInterval(() => {
-                if (!gameState.roomCode) return;
-                let roomDataStr = localStorage.getItem('uno_my_room_' + gameState.roomCode);
-                if (roomDataStr) {
-                    let roomData = JSON.parse(roomDataStr);
-                    if (roomData.gameActive && !gameState.gameActive) {
-                        gameState = roomData;
-                        switchScreen('screen-game');
-                        updateGameUI();
-                        return;
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        mono: {
+                            50: '#f9f9f9',
+                            100: '#f0f0f0',
+                            200: '#e0e0e0',
+                            300: '#cccccc',
+                            400: '#999999',
+                            500: '#666666',
+                            600: '#4d4d4d',
+                            700: '#333333',
+                            800: '#1a1a1a',
+                            900: '#0d0d0d',
+                            950: '#050505'
+                        }
                     }
-                    gameState.players = roomData.players;
-                    updateRoomUI();
-                }
-            }, 1000);
-        }
-
-        function addBotPlayer() {
-            if (!gameState.isHost) { showAlert('เฉพาะหัวหน้าห้องเท่านั้นที่เพิ่มบอทได้'); return; }
-            if (gameState.players.length >= 6) { showAlert('ห้องเต็มแล้ว'); return; }
-            gameState.players.push({ id: 'bot_' + Math.random(), name: 'บอท AI ' + (gameState.players.length + 1), isBot: true, hand: [] });
-            
-            let roomDataStr = localStorage.getItem('uno_my_room_' + gameState.roomCode);
-            if (roomDataStr) {
-                let roomData = JSON.parse(roomDataStr);
-                roomData.players = gameState.players;
-                localStorage.setItem('uno_my_room_' + gameState.roomCode, JSON.stringify(roomData));
-            }
-            updateRoomUI();
-        }
-
-        function removePlayer(id) {
-            if (!gameState.isHost) return;
-            gameState.players = gameState.players.filter(p => p.id !== id);
-            let roomDataStr = localStorage.getItem('uno_my_room_' + gameState.roomCode);
-            if (roomDataStr) {
-                let roomData = JSON.parse(roomDataStr);
-                roomData.players = gameState.players;
-                localStorage.setItem('uno_my_room_' + gameState.roomCode, JSON.stringify(roomData));
-            }
-            updateRoomUI();
-        }
-
-        function updateRoomUI() {
-            document.getElementById('display-room-code').textContent = gameState.roomCode;
-            document.getElementById('room-badge').textContent = 'ห้อง: ' + gameState.roomCode;
-            document.getElementById('player-count').textContent = gameState.players.length;
-
-            const list = document.getElementById('room-players-list');
-            list.innerHTML = '';
-            gameState.players.forEach((p, idx) => {
-                const isMe = p.id === gameState.myPlayerId;
-                list.innerHTML += `<div class="flex items-center justify-between p-3 bg-zinc-950 border border-zinc-800 rounded-xl">
-                    <div class="flex items-center space-x-3">
-                        <div class="w-8 h-8 rounded-lg bg-zinc-800 flex items-center justify-center font-bold text-xs">${idx + 1}</div>
-                        <div><span class="text-sm font-medium ${isMe ? 'text-white font-bold' : 'text-zinc-300'}">${p.name} ${isMe ? '(คุณ)' : ''}</span>
-                        <span class="block text-[10px] text-zinc-500">${p.isBot ? 'บอท AI' : (idx === 0 ? 'หัวหน้าห้อง' : 'ผู้เล่นจริง')}</span></div>
-                    </div>
-                    ${gameState.isHost && !isMe ? `<button onclick="removePlayer('${p.id}')" class="text-xs text-red-400">เตะ</button>` : ''}
-                </div>`;
-            });
-
-            const startBtn = document.getElementById('btn-start-game');
-            if (gameState.isHost) {
-                startBtn.style.display = 'block';
-                startBtn.disabled = gameState.players.length < 2;
-                startBtn.textContent = gameState.players.length < 2 ? 'ต้องการผู้เล่นอย่างน้อย 2 คน' : 'เริ่มเกม (' + gameState.players.length + ' คน)';
-            } else {
-                startBtn.style.display = 'none';
-            }
-        }
-
-        function copyRoomCode() {
-            navigator.clipboard.writeText(gameState.roomCode);
-            showAlert('คัดลอกรหัสแล้ว!');
-        }
-
-        function leaveRoom() {
-            if (syncInterval) clearInterval(syncInterval);
-            if (gameState.isHost && gameState.roomCode) {
-                localStorage.removeItem('uno_my_room_' + gameState.roomCode);
-            } else if (gameState.roomCode) {
-                let roomDataStr = localStorage.getItem('uno_my_room_' + gameState.roomCode);
-                if (roomDataStr) {
-                    let roomData = JSON.parse(roomDataStr);
-                    roomData.players = roomData.players.filter(p => p.id !== gameState.myPlayerId);
-                    localStorage.setItem('uno_my_room_' + gameState.roomCode, JSON.stringify(roomData));
                 }
             }
-            gameState.gameActive = false;
-            switchScreen('screen-lobby');
         }
-
-        function createDeck() {
-            let deck = [];
-            COLORS.forEach(c => {
-                deck.push({ type: 'number', color: c, value: 0 });
-                for (let v = 1; v <= 9; v++) deck.push({ type: 'number', color: c, value: v }, { type: 'number', color: c, value: v });
-                for (let i = 0; i < 2; i++) deck.push({ type: 'action', action: 'skip', color: c }, { type: 'action', action: 'reverse', color: c }, { type: 'action', action: 'draw2', color: c });
-            });
-            for (let i = 0; i < 4; i++) deck.push({ type: 'wild', action: 'wild', color: 'wild' }, { type: 'wild', action: 'wild4', color: 'wild' }, { type: 'special', action: 'trade', color: 'wild' }, { type: 'special', action: 'spin', color: 'wild' });
-            return deck.sort(() => Math.random() - 0.5);
-        }
-
-        function startGame() {
-            if (!gameState.isHost || gameState.players.length < 2) return;
-            gameState.deck = createDeck();
-            gameState.discardPile = [];
-            gameState.turnIndex = 0;
-            gameState.direction = 1;
-            gameState.gameActive = true;
-
-            gameState.players.forEach(p => {
-                p.hand = [];
-                for (let i = 0; i < 7; i++) p.hand.push(gameState.deck.pop());
-            });
-
-            let first = gameState.deck.pop();
-            while (first.type !== 'number') { gameState.deck.unshift(first); first = gameState.deck.pop(); }
-            gameState.discardPile.push(first);
-            gameState.activeColor = first.color;
-
-            localStorage.setItem('uno_my_room_' + gameState.roomCode, JSON.stringify(gameState));
-            switchScreen('screen-game');
-            updateGameUI();
-            showAlert('เริ่มเกม!');
-        }
-
-        function updateGameUI() {
-            if (!gameState.gameActive) return;
-            document.getElementById('deck-count').textContent = gameState.deck.length;
-            const cur = gameState.players[gameState.turnIndex];
-            const isMe = cur.id === gameState.myPlayerId;
-            document.getElementById('game-status-text').textContent = isMe ? 'ตาของคุณ!' : 'ตาของ: ' + cur.name;
-
-            const badge = document.getElementById('active-color-badge');
-            badge.textContent = 'สี: ' + COLOR_NAMES_TH[gameState.activeColor];
-
-            const top = gameState.discardPile[gameState.discardPile.length - 1];
-            document.getElementById('discard-pile').innerHTML = getCardHTML(top);
-
-            const oppContainer = document.getElementById('opponents-container');
-            oppContainer.innerHTML = '';
-            gameState.players.forEach((p, idx) => {
-                if (p.id === gameState.myPlayerId) return;
-                oppContainer.innerHTML += `<div class="flex flex-col items-center p-2 rounded-xl border ${idx === gameState.turnIndex ? 'bg-zinc-900 border-white' : 'bg-zinc-950 border-zinc-800'}">
-                    <span class="text-xs text-zinc-300">${p.name}</span>
-                    <span class="text-xs text-white font-bold mt-1">การ์ด x${p.hand.length}</span>
-                </div>`;
-            });
-
-            const me = gameState.players.find(p => p.id === gameState.myPlayerId) || gameState.players[0];
-            document.getElementById('my-card-count').textContent = me.hand.length;
-
-            const handContainer = document.getElementById('my-hand-container');
-            handContainer.innerHTML = '';
-            me.hand.forEach((card, idx) => {
-                const playable = isMe && isValid(card, top, gameState.activeColor);
-                const el = document.createElement('div');
-                el.className = `uno-card w-24 h-36 border shrink-0 ${playable ? 'border-white hover:-translate-y-3 cursor-pointer' : 'border-zinc-800 opacity-60'}`;
-                el.innerHTML = getCardHTML(card);
-                if (playable) el.onclick = () => playCard(idx);
-                handContainer.appendChild(el);
-            });
-
-            document.getElementById('btn-pass').classList.toggle('hidden', !(isMe && gameState.hasDrawnThisTurn));
-        }
-
-        function getCardHTML(card) {
-            let label = card.value ?? (card.action === 'skip' ? '🚫' : card.action === 'reverse' ? '🔄' : card.action === 'draw2' ? '+2' : card.action === 'wild' ? '🌈' : card.action === 'wild4' ? '+4' : card.action === 'trade' ? '🔄แลก' : '🔀หมุด');
-            let colorClass = card.color === 'red' ? 'border-red-500 text-red-500 bg-red-950/20' : card.color === 'blue' ? 'border-blue-500 text-blue-400 bg-blue-950/20' : card.color === 'green' ? 'border-green-500 text-green-400 bg-green-950/20' : card.color === 'yellow' ? 'border-yellow-500 text-yellow-400 bg-yellow-950/20' : 'border-white text-white bg-zinc-900';
-            return `<div class="w-full h-full p-2.5 flex flex-col justify-between border-2 ${colorClass} rounded-xl relative">
-                <span class="text-xs font-bold">${label}</span>
-                <span class="text-2xl font-black mx-auto">${label}</span>
-                <span class="text-xs font-bold text-right rotate-180">${label}</span>
-            </div>`;
-        }
-
-        function isValid(card, top, col) {
-            return card.color === 'wild' || card.color === col || card.value === top.value || card.action === top.action;
-        }
-
-        function drawCard() {
-            const cur = gameState.players[gameState.turnIndex];
-            if (cur.id !== gameState.myPlayerId || gameState.hasDrawnThisTurn) return;
-            if (gameState.deck.length === 0) gameState.deck = gameState.discardPile.splice(0, gameState.discardPile.length - 1);
-            cur.hand.push(gameState.deck.pop());
-            gameState.hasDrawnThisTurn = true;
-            if (gameState.isHost) localStorage.setItem('uno_my_room_' + gameState.roomCode, JSON.stringify(gameState));
-            updateGameUI();
-        }
-
-        function passTurn() { gameState.hasDrawnThisTurn = false; nextTurn(); }
-
-        function playCard(idx) {
-            const cur = gameState.players[gameState.turnIndex];
-            const card = cur.hand.splice(idx, 1)[0];
-            gameState.discardPile.push(card);
-            gameState.hasDrawnThisTurn = false;
-
-            if (cur.hand.length === 0) { triggerWin(cur); return; }
-
-            if (card.color === 'wild') {
-                if (cur.id === gameState.myPlayerId) {
-                    gameState.pendingWild = card;
-                    document.getElementById('modal-color-picker').classList.remove('hidden');
-                    return;
-                } else {
-                    gameState.activeColor = COLORS[Math.floor(Math.random() * COLORS.length)];
-                }
-            } else {
-                gameState.activeColor = card.color;
-            }
-            nextTurn();
-        }
-
-        function selectWildColor(col) {
-            gameState.activeColor = col;
-            closeModals();
-            if (gameState.pendingWild?.action === 'wild4') {
-                const next = getNextIdx(gameState.direction);
-                for(let i=0; i<4; i++) gameState.players[next].hand.push(gameState.deck.pop());
-            }
-            gameState.pendingWild = null;
-            nextTurn();
-        }
-
-        function getNextIdx(step) {
-            let n = (gameState.turnIndex + step) % gameState.players.length;
-            return n < 0 ? n + gameState.players.length : n;
-        }
-
-        function nextTurn() {
-            gameState.turnIndex = getNextIdx(gameState.direction);
-            if (gameState.isHost) localStorage.setItem('uno_my_room_' + gameState.roomCode, JSON.stringify(gameState));
-            updateGameUI();
-        }
-
-        function sayUno() { showAlert('ประกาศอูโน่แล้ว!'); }
-        function triggerWin(w) {
-            gameState.gameActive = false;
-            document.getElementById('winner-title').textContent = 'ผู้ชนะคือ ' + w.name + '!';
-            document.getElementById('modal-game-over').classList.remove('hidden');
-        }
-        function returnToRoom() { closeModals(); switchScreen('screen-room'); }
     </script>
+    <!-- Google Fonts Inter -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body class="min-h-screen flex flex-col justify-between selection:bg-white selection:text-black">
+
+    <div id="modal-container" class="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm hidden">
+        <div class="bg-mono-900 border border-mono-700 rounded-2xl p-6 max-w-sm w-full mx-4 shadow-2xl text-center">
+            <h3 id="modal-title" class="text-xl font-bold mb-2 text-white">แจ้งเตือน</h3>
+            <p id="modal-message" class="text-mono-400 text-sm mb-6"></p>
+            <button onclick="closeModal()" class="w-full py-3 bg-white text-black font-semibold rounded-xl hover:bg-mono-200 transition">ตกลง</button>
+        </div>
+    </div>
+
+    <header class="border-b border-mono-800 p-4 flex justify-between items-center bg-mono-950/50 backdrop-blur sticky top-0 z-40">
+        <div class="flex items-center space-x-3 cursor-pointer" onclick="returnToLobby()">
+            <div class="w-10 h-10 rounded-xl bg-white text-black font-extrabold flex items-center justify-center text-xl shadow-lg">U</div>
+            <div>
+                <h1 class="font-bold text-lg tracking-wider text-white">MONOCHROME UNO</h1>
+                <p class="text-xs text-mono-400">Multiplayer & Bots (2-6 Players)</p>
+            </div>
+        </div>
+        <div id="header-user-info" class="hidden flex items-center space-x-3">
+            <span id="header-player-name" class="text-sm font-medium text-mono-300"></span>
+            <button onclick="returnToLobby()" class="px-3 py-1.5 bg-mono-800 hover:bg-mono-700 text-xs font-medium rounded-lg text-mono-200 border border-mono-700 transition">ออกจากห้อง</button>
+        </div>
+    </header>
+
+    <main class="flex-grow flex flex-col items-center justify-center p-4 max-w-6xl mx-auto w-full">
+        
+        <!-- VIEW 1: LOBBY -->
+        <div id="view-lobby" class="w-full max-w-md space-y-6">
+            <div class="text-center space-y-2">
+                <h2 class="text-3xl font-extrabold tracking-tight text-white">ยินดีต้อนรับสู่อูโน่</h2>
+                <p class="text-sm text-mono-400">กรอกชื่อของคุณเพื่อเริ่มต้นความสนุก</p>
+            </div>
+
+            <div class="bg-mono-900 border border-mono-800 rounded-2xl p-6 shadow-xl space-y-4">
+                <div>
+                    <label class="block text-xs font-semibold uppercase tracking-wider text-mono-400 mb-2">ชื่อผู้เล่น</label>
+                    <input type="text" id="input-username" placeholder="ระบุชื่อของคุณ..." maxlength="15" class="w-full px-4 py-3 bg-mono-950 border border-mono-700 rounded-xl text-white focus:outline-none focus:border-white transition">
+                </div>
+
+                <div class="grid grid-cols-2 gap-3 pt-2">
+                    <button onclick="showCreateRoomModal()" class="py-3 px-4 bg-white text-black font-semibold rounded-xl hover:bg-mono-200 transition text-sm shadow-lg flex items-center justify-center space-x-2">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+                        <span>สร้างห้อง</span>
+                    </button>
+                    <button onclick="showJoinRoomModal()" class="py-3 px-4 bg-mono-800 text-white border border-mono-700 font-semibold rounded-xl hover:bg-mono-700 transition text-sm flex items-center justify-center space-x-2">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h7a3 3 0 013 3v1"></path></svg>
+                        <span>เข้าร่วมห้อง</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- CREATE ROOM SUB-MODAL/BOX -->
+        <div id="box-create-room" class="w-full max-w-md space-y-6 hidden">
+            <div class="bg-mono-900 border border-mono-800 rounded-2xl p-6 shadow-xl space-y-4">
+                <div class="flex justify-between items-center">
+                    <h3 class="text-lg font-bold text-white">ตั้งค่าการสร้างห้อง</h3>
+                    <button onclick="backToLobbyMain()" class="text-mono-400 hover:text-white text-sm">ย้อนกลับ</button>
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold uppercase tracking-wider text-mono-400 mb-2">รหัสผ่านห้อง (สำหรับเพื่อนเข้าร่วม)</label>
+                    <input type="text" id="input-room-code" placeholder="เช่น 1234 หรือ ABC" class="w-full px-4 py-3 bg-mono-950 border border-mono-700 rounded-xl text-white focus:outline-none focus:border-white transition">
+                </div>
+                <button onclick="createRoom()" class="w-full py-3 bg-white text-black font-semibold rounded-xl hover:bg-mono-200 transition shadow-lg">ยืนยันการสร้างห้อง</button>
+            </div>
+        </div>
+
+        <!-- JOIN ROOM SUB-MODAL/BOX -->
+        <div id="box-join-room" class="w-full max-w-md space-y-6 hidden">
+            <div class="bg-mono-900 border border-mono-800 rounded-2xl p-6 shadow-xl space-y-4">
+                <div class="flex justify-between items-center">
+                    <h3 class="text-lg font-bold text-white">เข้าร่วมห้องด้วยรหัส</h3>
+                    <button onclick="backToLobbyMain()" class="text-mono-400 hover:text-white text-sm">ย้อนกลับ</button>
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold uppercase tracking-wider text-mono-400 mb-2">รหัสห้อง</label>
+                    <input type="text" id="input-join-code" placeholder="ใส่รหัสห้อง..." class="w-full px-4 py-3 bg-mono-950 border border-mono-700 rounded-xl text-white focus:outline-none focus:border-white transition uppercase">
+                </div>
+                <button onclick="joinRoom()" class="w-full py-3 bg-white text-black font-semibold rounded-xl hover:bg-mono-200 transition shadow-lg">เข้าร่วมห้อง</button>
+            </div>
+        </div>
+
+        <!-- VIEW 2: WAITING ROOM -->
+        <div id="view-room" class="w-full max-w-2xl space-y-6 hidden">
+            <div class="bg-mono-900 border border-mono-800 rounded-2xl p-6 shadow-xl space-y-6">
+                <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center border-b border-mono-800 pb-4 gap-2">
+                    <div>
+                        <span class="text-xs uppercase font-semibold text-mono-400 tracking-wider">รหัสห้องของคุณ</span>
+                        <h2 id="room-display-code" class="text-2xl font-black text-white tracking-widest">---</h2>
+                    </div>
+                    <div class="flex items-center space-x-2">
+                        <span class="px-3 py-1 bg-mono-800 text-mono-200 text-xs font-semibold rounded-full border border-mono-700"><span id="player-count">0</span>/6 ผู้เล่น</span>
+                        <button onclick="returnToLobby()" class="px-3 py-1 bg-red-950/50 border border-red-800 text-red-200 text-xs font-semibold rounded-lg hover:bg-red-900 transition">ออกห้อง</button>
+                    </div>
+                </div>
+
+                <div>
+                    <div class="flex justify-between items-center mb-3">
+                        <h3 class="text-sm font-semibold uppercase tracking-wider text-mono-400">รายชื่อผู้เล่นในห้อง</h3>
+                        <div id="host-bot-controls" class="hidden flex space-x-2">
+                            <button onclick="addBot()" class="px-3 py-1.5 bg-mono-800 hover:bg-mono-700 text-xs font-semibold rounded-lg border border-mono-700 transition text-white flex items-center space-x-1">
+                                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z"></path></svg>
+                                <span>เพิ่มบอท</span>
+                            </button>
+                        </div>
+                    </div>
+                    <div id="room-players-list" class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <!-- Dynamically populated players -->
+                    </div>
+                </div>
+
+                <div id="host-start-container" class="hidden pt-2">
+                    <button onclick="startGame()" class="w-full py-4 bg-white text-black font-bold rounded-xl hover:bg-mono-200 transition shadow-xl text-center">เริ่มเกม (ต้องการผู้เล่นอย่างน้อย 2 คน)</button>
+                </div>
+                <div id="guest-wait-container" class="text-center py-2 text-mono-400 text-sm">
+                    รอหัวหน้าห้องกดเริ่มเกม...
+                </div>
+            </div>
+        </div>
+
+        <!-- VIEW 3: GAMEPLAY ARENA -->
+        <div id="view-game" class="w-full flex flex-col min-h-[80vh] justify-between hidden space-y-4">
+            
+            <!-- Opponents Bar -->
+            <div id="opponents-container" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3 w-full">
+                <!-- Dynamically populated opponent cards count -->
+            </div>
+
+            <!-- Central Table: Deck & Discard Pile -->
+            <div class="flex flex-col items-center justify-center my-6 space-y-4">
+                <div class="flex items-center space-x-6">
+                    <!-- Draw Deck -->
+                    <div onclick="drawCard()" class="uno-card uno-card-back w-24 h-36 rounded-2xl border-2 border-mono-600 shadow-xl cursor-pointer flex flex-col items-center justify-center p-2 relative group">
+                        <div class="w-16 h-24 border border-dashed border-mono-500 rounded-xl flex items-center justify-center bg-black/40">
+                            <span class="text-xs font-bold text-mono-300 group-hover:scale-110 transition">จั่วการ์ด</span>
+                        </div>
+                    </div>
+
+                    <!-- Discard Pile -->
+                    <div id="discard-pile" class="w-24 h-36 rounded-2xl border-2 border-white shadow-2xl flex flex-col items-center justify-center p-3 relative bg-white text-black font-black">
+                        <!-- Top card rendered here -->
+                    </div>
+                </div>
+
+                <!-- Game Status / Turn Info -->
+                <div class="flex items-center space-x-4 bg-mono-900 border border-mono-800 px-6 py-2 rounded-full shadow-lg">
+                    <div class="flex items-center space-x-2">
+                        <div id="turn-direction-indicator" class="w-3 h-3 rounded-full bg-white animate-pulse"></div>
+                        <span id="turn-status-text" class="text-xs font-semibold text-mono-200">ตาของคุณ</span>
+                    </div>
+                    <span class="text-mono-700">|</span>
+                    <span id="game-info-sub" class="text-xs text-mono-400">สีปัจจุบัน: -</span>
+                </div>
+            </div>
+
+            <!-- Player Hand -->
+            <div class="bg-mono-900/80 backdrop-blur border border-mono-800 rounded-3xl p-4 shadow-2xl space-y-3">
+                <div class="flex justify-between items-center px-2">
+                    <span class="text-xs font-bold uppercase tracking-wider text-mono-300">การ์ดในมือของคุณ (<span id="my-card-count">0</span> ใบ)</span>
+                    <div class="flex space-x-2">
+                        <button onclick="shoutUno()" class="px-3 py-1 bg-white text-black text-xs font-extrabold rounded-lg hover:bg-mono-200 shadow transition">ตะโกน UNO!</button>
+                    </div>
+                </div>
+                <!-- Scrollable Hand -->
+                <div id="my-hand-container" class="flex overflow-x-auto space-x-3 py-2 px-1 no-scrollbar min-h-[160px] items-center">
+                    <!-- Dynamically populated user cards -->
+                </div>
+            </div>
+
+        </div>
+
+    </main>
+
+    <!-- Wild Color Picker Modal -->
+    <div id="color-picker-modal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm hidden">
+        <div class="bg-mono-900 border border-mono-700 rounded-2xl p-6 max-w-xs w-full mx-4 shadow-2xl text-center space-y-4">
+            <h3 class="text-lg font-bold text-white">เลือกสีสำหรับการ์ดพิเศษ</h3>
+            <div class="grid grid-cols-2 gap-3">
+                <button onclick="selectWildColor('RED')" class="py-4 bg-red-600 hover:bg-red-500 font-bold rounded-xl text-white shadow">สีแดง</button>
+                <button onclick="selectWildColor('BLUE')" class="py-4 bg-blue-600 hover:bg-blue-500 font-bold rounded-xl text-white shadow">สีน้ำเงิน</button>
+                <button onclick="selectWildColor('GREEN')" class="py-4 bg-green-600 hover:bg-green-500 font-bold rounded-xl text-white shadow">สีเขียว</button>
+                <button onclick="selectWildColor('YELLOW')" class="py-4 bg-yellow-500 hover:bg-yellow-400 font-bold rounded-xl text-black shadow">สีเหลือง</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Card Swap Target Picker Modal -->
+    <div id="swap-target-modal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm hidden">
+        <div class="bg-mono-900 border border-mono-700 rounded-2xl p-6 max-w-sm w-full mx-4 shadow-2xl text-center space-y-4">
+            <h3 class="text-lg font-bold text-white">การ์ดแลกเปลี่ยน (Thai Card Swap)</h3>
+            <p class="text-xs text-mono-400">เลือกผู้เล่นที่คุณต้องการสลับจำนวนการ์ดทั้งหมดด้วย</p>
+            <div id="swap-targets-list" class="space-y-2 max-h-60 overflow-y-auto">
+                <!-- Dynamically populated targets -->
+            </div>
+            <button onclick="closeSwapModal()" class="w-full py-2.5 bg-mono-800 text-mono-300 rounded-xl text-xs font-semibold hover:bg-mono-700 transition">ยกเลิก</button>
+        </div>
+    </div>
+
+    <!-- Script Import -->
+    <script type="module" src="script.js"></script>
 </body>
 </html>
