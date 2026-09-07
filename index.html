@@ -7,7 +7,6 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link href="https://fonts.googleapis.com/css2?family=Kanit:wght@300;400;600;700&display=swap" rel="stylesheet">
-    
     <link rel="stylesheet" href="style.css">
 </head>
 <body class="min-h-screen flex flex-col font-sans">
@@ -103,9 +102,7 @@
                     </button>
                 </div>
                 
-                <div id="players-list" class="grid grid-cols-2 md:grid-cols-3 gap-4">
-                    <!-- Player items will be injected here -->
-                </div>
+                <div id="players-list" class="grid grid-cols-2 md:grid-cols-3 gap-4"></div>
             </div>
 
             <div class="text-center">
@@ -119,8 +116,6 @@
 
     <!-- Screen: Game -->
     <div id="screen-game" class="hidden flex-1 flex flex-col relative h-screen">
-        
-        <!-- Header Info -->
         <div class="absolute top-0 left-0 w-full p-2 flex justify-between items-start z-10 pointer-events-none">
             <div class="glass-panel p-2 px-4 rounded-full pointer-events-auto flex items-center gap-2">
                 <span class="text-xs text-gray-400">ห้อง:</span>
@@ -131,16 +126,10 @@
             </button>
         </div>
 
-        <!-- Opponents Area (Top / Sides) -->
-        <div id="opponents-container" class="flex-1 flex justify-around items-start pt-16 px-4 pb-4">
-            <!-- Opponents injected here dynamically -->
-        </div>
+        <div id="opponents-container" class="flex-1 flex justify-around items-start pt-16 px-4 pb-4"></div>
 
-        <!-- Play Area (Center) -->
         <div class="absolute inset-0 flex items-center justify-center pointer-events-none">
             <div class="glass-panel p-6 rounded-2xl pointer-events-auto flex gap-6 items-center shadow-2xl" id="play-area-bg">
-                
-                <!-- Deck -->
                 <div class="flex flex-col items-center">
                     <div id="deck-pile" class="uno-card card-back hover:scale-105 transition shadow-[4px_4px_0_#111,8px_8px_0_#222] mb-2" onclick="drawCard()">
                         <div class="inner-oval"></div>
@@ -148,17 +137,13 @@
                     <span class="text-xs text-gray-400 font-bold bg-gray-800 px-2 py-1 rounded-full"><span id="deck-count">112</span> ใบ</span>
                 </div>
 
-                <!-- Discard Pile -->
                 <div class="flex flex-col items-center">
-                    <div id="discard-pile" class="relative">
-                        <!-- Render top card here -->
-                    </div>
+                    <div id="discard-pile" class="relative"></div>
                     <div id="current-color-indicator" class="mt-4 px-3 py-1 rounded-full text-xs font-bold border hidden shadow-lg uppercase">
                         สีปัจจุบัน
                     </div>
                 </div>
 
-                <!-- Direction & Draw Stack Info -->
                 <div class="absolute top-0 right-0 transform translate-x-1/2 -translate-y-1/2 flex flex-col gap-2">
                      <div id="direction-indicator" class="w-10 h-10 rounded-full glass-panel flex items-center justify-center text-xl text-white shadow-lg">
                         <i class="fas fa-redo"></i>
@@ -167,28 +152,22 @@
                         +0
                     </div>
                 </div>
-
             </div>
         </div>
 
-        <!-- Action Buttons (UNO) -->
         <div class="absolute bottom-[160px] right-4 md:right-10 z-20">
             <button id="btn-uno" onclick="callUno()" class="w-16 h-16 md:w-20 md:h-20 bg-gradient-to-br from-red-600 to-red-800 border-4 border-yellow-400 rounded-full font-black text-xl md:text-2xl text-yellow-400 shadow-[0_0_15px_rgba(255,0,0,0.5)] transform hover:scale-110 transition flex items-center justify-center opacity-50 cursor-not-allowed">
                 UNO!
             </button>
         </div>
 
-        <!-- My Hand Area -->
         <div class="h-40 md:h-48 w-full bg-black/40 backdrop-blur-sm border-t border-gray-700 pb-4 pt-2 relative z-10 flex flex-col">
             <div class="text-center text-sm font-semibold mb-1" id="my-turn-indicator">
                 <span class="px-4 py-1 rounded-full bg-gray-700 text-gray-300">รอรอบของคุณ...</span>
             </div>
-            <div id="my-hand" class="hand-container flex-1 items-end">
-                <!-- Cards injected here -->
-            </div>
+            <div id="my-hand" class="hand-container flex-1 items-end"></div>
         </div>
 
-        <!-- Game Log -->
         <div class="absolute left-4 bottom-[160px] md:bottom-[200px] w-48 md:w-64 max-h-40 overflow-y-auto glass-panel p-3 text-xs md:text-sm hidden sm:block z-20" id="game-log">
             <div class="text-gray-400 font-bold border-b border-gray-600 mb-2 pb-1">บันทึกเกม</div>
             <ul id="log-list" class="space-y-1"></ul>
