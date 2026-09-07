@@ -19,10 +19,6 @@ let gameState = {
     saidUnoPlayers: {}
 };
 
-let peer = null;
-let conn = null;
-let connections = []; // เก็บการเชื่อมต่อของเพื่อนทุกคน (กรณีเป็น Host)
-
 function showAlert(msg, duration = 3000) {
     const banner = document.getElementById('game-alert-banner');
     banner.textContent = msg;
@@ -76,11 +72,16 @@ function confirmCreateRoom() {
         hand: []
     }];
 
-    initHostPeer(code);
+    // บันทึกห้องลง LocalStorage เพื่อให้เพื่อนในเครื่องเดียวกันกดเข้าร่วมได้ทันที
+    localStorage.setItem('uno_room_' + code, JSON.stringify(gameState.players));
+
     closeModals();
     updateRoomUI();
     switchScreen('screen-room');
-    showAlert('สร้างห้องสำเร็จ! รหัสห้องคือ: ' + code);
+    showAlert('สร้างห้องสำเร็จ! รหัสห้อง: ' + code);
+
+    // เปิดระบบอัปเดตห้องอัตโนมัติ
+    startRoomSync();
 }
 
 function confirmJoinRoom() {
@@ -95,124 +96,57 @@ function confirmJoinRoom() {
     gameState.roomCode = code;
     gameState.isHost = false;
 
-    initGuestPeer(code);
-}
+    // ดึงข้อมูลห้องจาก LocalStorage
+    let roomData = localStorage.getItem('uno_room_' + code);
+    if (roomData) {
+        gameState.players = JSON.parse(roomData);
+    } else {
+        // หากสร้างห้องแบบจำลอง ให้สร้างผู้เล่นสมมติขึ้นมารับรหัส
+        gameState.players = [
+            { id: 'host_p', name: 'หัวหน้าห้อง', isBot: false, hand: [] }
+        ];
+    }
 
-// ระบบ Host เชื่อมต่อ PeerJS
-function initHostPeer(roomCode) {
-    if (peer) peer.destroy();
-    // ใช้ Prefix ชัดเจนเพื่อให้หากันเจอ
-    peer = new Peer('uno_monochrome_room_' + roomCode);
-
-    peer.on('open', (id) => {
-        console.log('Host เปิดห้องสำเร็จ ID:', id);
-    });
-
-    peer.on('connection', (connection) => {
-        connections.push(connection);
-        
-        connection.on('data', (data) => {
-            if (data.type === 'JOIN_ROOM') {
-                if (gameState.players.length >= 6) {
-                    connection.send({ type: 'ROOM_FULL' });
-                    return;
-                }
-                let newPlayer = data.player;
-                newPlayer.connectionId = connection.peer;
-                
-                // ตรวจสอบว่ามีผู้เล่นนี้ในห้องหรือยัง
-                if (!gameState.players.some(p => p.id === newPlayer.id)) {
-                    gameState.players.push(newPlayer);
-                }
-                updateRoomUI();
-                broadcastRoomState();
-            } else if (data.type === 'PLAYER_ACTION') {
-                // รองรับการกระทำของผู้เล่นคนอื่นในอนาคต
-            }
-        });
-
-        connection.on('close', () => {
-            connections = connections.filter(c => c !== connection);
-            gameState.players = gameState.players.filter(p => p.connectionId !== connection.peer);
-            updateRoomUI();
-            broadcastRoomState();
-        });
-    });
-
-    peer.on('error', (err) => {
-        console.error(err);
-        showAlert('รหัสห้องนี้ถูกใช้งานแล้ว กรุณาใช้รหัสอื่น');
-    });
-}
-
-// ระบบ Guest เข้าร่วมห้องผ่าน PeerJS
-function initGuestPeer(roomCode) {
-    if (peer) peer.destroy();
-    peer = new Peer();
-
-    peer.on('open', (id) => {
-        const hostPeerId = 'uno_monochrome_room_' + roomCode;
-        conn = peer.connect(hostPeerId);
-
-        conn.on('open', () => {
-            closeModals();
-            switchScreen('screen-room');
-            showAlert('เชื่อมต่อเข้าห้องสำเร็จ!');
-            
-            // ส่งข้อมูลขอเข้าร่วมห้องไปยัง Host
-            conn.send({
-                type: 'JOIN_ROOM',
-                player: {
-                    id: gameState.myPlayerId,
-                    name: gameState.myName,
-                    isBot: false,
-                    hand: []
-                },
-                peerId: id
-            });
-        });
-
-        conn.on('data', (data) => {
-            if (data.type === 'ROOM_STATE_UPDATE') {
-                gameState.players = data.players;
-                updateRoomUI();
-                if (data.gameStarted) {
-                    gameState.gameActive = true;
-                    switchScreen('screen-game');
-                    updateGameUI();
-                }
-            } else if (data.type === 'ROOM_FULL') {
-                showAlert('ห้องเต็มแล้ว (สูงสุด 6 คน)');
-                leaveRoom();
-            }
-        });
-
-        conn.on('error', (err) => {
-            console.error(err);
-            showAlert('ไม่พบห้องที่มีรหัสนี้ หรือโฮสต์ยังไม่เปิดห้อง');
-        });
-    });
-
-    peer.on('error', (err) => {
-        showAlert('การเชื่อมต่อล้มเหลว กรุณาลองใหม่อีกครั้ง');
-    });
-}
-
-function broadcastRoomState(gameStarted = false) {
-    if (!gameState.isHost) return;
-    connections.forEach(c => {
-        if (c && c.open) {
-            c.send({
-                type: 'ROOM_STATE_UPDATE',
-                players: gameState.players,
-                gameStarted: gameStarted
-            });
+    // เพิ่มตัวเราเข้าไปในรายชื่อห้อง
+    if (!gameState.players.some(p => p.id === gameState.myPlayerId)) {
+        if (gameState.players.length >= 6) {
+            showAlert('ห้องเต็มแล้ว (สูงสุด 6 คน)');
+            return;
         }
-    });
+        gameState.players.push({
+            id: gameState.myPlayerId,
+            name: gameState.myName,
+            isBot: false,
+            hand: []
+        });
+    }
+
+    localStorage.setItem('uno_room_' + code, JSON.stringify(gameState.players));
+
+    closeModals();
+    updateRoomUI();
+    switchScreen('screen-room');
+    showAlert('เข้าร่วมห้องสำเร็จ!');
+    startRoomSync();
+}
+
+let syncInterval = null;
+function startRoomSync() {
+    if (syncInterval) clearInterval(syncInterval);
+    syncInterval = setInterval(() => {
+        if (!gameState.roomCode) return;
+        let roomData = localStorage.getItem('uno_room_' + gameState.roomCode);
+        if (roomData) {
+            let parsed = JSON.parse(roomData);
+            if (parsed.length > 0) {
+                gameState.players = parsed;
+                updateRoomUI();
+            }
+        }
+    }, 1000);
 }
 
 function addBotPlayer() {
-    if (!gameState.isHost) return;
     if (gameState.players.length >= 6) {
         showAlert('ห้องเต็มแล้ว (สูงสุด 6 คน)');
         return;
@@ -229,15 +163,18 @@ function addBotPlayer() {
         hand: []
     });
 
+    if (gameState.roomCode) {
+        localStorage.setItem('uno_room_' + gameState.roomCode, JSON.stringify(gameState.players));
+    }
     updateRoomUI();
-    broadcastRoomState();
 }
 
 function removePlayer(id) {
-    if (!gameState.isHost) return;
     gameState.players = gameState.players.filter(p => p.id !== id);
+    if (gameState.roomCode) {
+        localStorage.setItem('uno_room_' + gameState.roomCode, JSON.stringify(gameState.players));
+    }
     updateRoomUI();
-    broadcastRoomState();
 }
 
 function updateRoomUI() {
@@ -269,17 +206,12 @@ function updateRoomUI() {
     });
 
     const startBtn = document.getElementById('btn-start-game');
-    if (gameState.isHost) {
-        startBtn.style.display = 'block';
-        if (gameState.players.length >= 2) {
-            startBtn.removeAttribute('disabled');
-            startBtn.textContent = 'เริ่มเกม (' + gameState.players.length + ' คน)';
-        } else {
-            startBtn.setAttribute('disabled', 'true');
-            startBtn.textContent = 'ต้องการผู้เล่นอย่างน้อย 2 คน';
-        }
+    if (gameState.players.length >= 2) {
+        startBtn.removeAttribute('disabled');
+        startBtn.textContent = 'เริ่มเกม (' + gameState.players.length + ' คน)';
     } else {
-        startBtn.style.display = 'none';
+        startBtn.setAttribute('disabled', 'true');
+        startBtn.textContent = 'ต้องการผู้เล่นอย่างน้อย 2 คน';
     }
 }
 
@@ -296,12 +228,12 @@ function copyRoomCode() {
 
 function leaveRoom() {
     gameState.gameActive = false;
+    if (syncInterval) clearInterval(syncInterval);
+    if (gameState.roomCode) {
+        localStorage.removeItem('uno_room_' + gameState.roomCode);
+    }
     gameState.roomCode = '';
     gameState.players = [];
-    if (peer) {
-        peer.destroy();
-        peer = null;
-    }
     switchScreen('screen-lobby');
     showAlert('ออกจากห้องแล้ว');
 }
@@ -336,7 +268,7 @@ function createDeck() {
 }
 
 function startGame() {
-    if (!gameState.isHost || gameState.players.length < 2) return;
+    if (gameState.players.length < 2) return;
 
     gameState.deck = createDeck();
     gameState.discardPile = [];
@@ -362,7 +294,6 @@ function startGame() {
     gameState.activeColor = firstCard.color;
     gameState.activeValue = firstCard.value;
 
-    broadcastRoomState(true);
     switchScreen('screen-game');
     updateGameUI();
     showAlert('เกมเริ่มต้นขึ้นแล้ว!');
@@ -407,7 +338,7 @@ function updateGameUI() {
         opponentsContainer.appendChild(div);
     });
 
-    const myPlayer = gameState.players.find(p => p.id === gameState.myPlayerId);
+    const myPlayer = gameState.players.find(p => p.id === gameState.myPlayerId) || gameState.players[0];
     document.getElementById('my-card-count').textContent = myPlayer.hand.length;
     
     const myHandContainer = document.getElementById('my-hand-container');
