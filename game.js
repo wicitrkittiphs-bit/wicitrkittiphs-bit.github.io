@@ -6,6 +6,7 @@ let gameState = {
     isHost: false,
     players: [],
     myPlayerId: 'p_' + Math.random().toString(36).substring(2, 7),
+    myName: 'ผู้เล่น',
     turnIndex: 0,
     direction: 1,
     deck: [],
@@ -14,10 +15,13 @@ let gameState = {
     activeValue: null,
     gameActive: false,
     pendingWildCard: null,
-    pendingTradeCardIndex: null,
     hasDrawnThisTurn: false,
     saidUnoPlayers: {}
 };
+
+let peer = null;
+let conn = null;
+let connections = [];
 
 function showAlert(msg, duration = 3000) {
     const banner = document.getElementById('game-alert-banner');
@@ -61,26 +65,27 @@ function showJoinRoomModal() {
 
 function confirmCreateRoom() {
     const code = document.getElementById('input-create-code').value.trim() || '1234';
-    const username = document.getElementById('input-username').value.trim() || 'ผู้เล่น';
+    gameState.myName = document.getElementById('input-username').value.trim() || 'ผู้เล่น';
     
     gameState.roomCode = code;
     gameState.isHost = true;
     gameState.players = [{
         id: gameState.myPlayerId,
-        name: username,
+        name: gameState.myName,
         isBot: false,
         hand: []
     }];
 
+    initHostPeer(code);
     closeModals();
     updateRoomUI();
     switchScreen('screen-room');
-    showAlert('สร้างห้องสำเร็จ!');
+    showAlert('สร้างห้องสำเร็จ! รอเพื่อนเข้าร่วมด้วยรหัส ' + code);
 }
 
 function confirmJoinRoom() {
     const code = document.getElementById('input-join-code').value.trim().toUpperCase();
-    const username = document.getElementById('input-username').value.trim() || 'ผู้เล่น';
+    gameState.myName = document.getElementById('input-username').value.trim() || 'ผู้เล่น';
     
     if (!code) {
         showAlert('กรุณากรอกรหัสห้อง');
@@ -89,18 +94,106 @@ function confirmJoinRoom() {
 
     gameState.roomCode = code;
     gameState.isHost = false;
-    gameState.players = [
-        { id: 'host_dummy', name: 'หัวหน้าห้อง (โฮสต์)', isBot: true, hand: [] },
-        { id: gameState.myPlayerId, name: username, isBot: false, hand: [] }
-    ];
 
-    closeModals();
-    updateRoomUI();
-    switchScreen('screen-room');
-    showAlert('เข้าร่วมห้องสำเร็จ!');
+    initGuestPeer(code);
+}
+
+function initHostPeer(roomCode) {
+    if (peer) peer.destroy();
+    peer = new Peer('uno_room_' + roomCode);
+
+    peer.on('open', (id) => {
+        console.log('Host connected:', id);
+    });
+
+    peer.on('connection', (connection) => {
+        connections.push(connection);
+        
+        connection.on('data', (data) => {
+            if (data.type === 'JOIN_ROOM') {
+                if (gameState.players.length >= 6) {
+                    connection.send({ type: 'ROOM_FULL' });
+                    return;
+                }
+                let newPlayer = data.player;
+                newPlayer.connectionId = connection.peer;
+                gameState.players.push(newPlayer);
+                updateRoomUI();
+                broadcastRoomState();
+            }
+        });
+
+        connection.on('close', () => {
+            connections = connections.filter(c => c !== connection);
+            gameState.players = gameState.players.filter(p => p.connectionId !== connection.peer);
+            updateRoomUI();
+            broadcastRoomState();
+        });
+    });
+
+    peer.on('error', (err) => {
+        showAlert('รหัสห้องนี้อาจถูกใช้งานแล้ว ลองเปลี่ยนรหัสอื่น');
+    });
+}
+
+function initGuestPeer(roomCode) {
+    if (peer) peer.destroy();
+    peer = new Peer();
+
+    peer.on('open', (id) => {
+        conn = peer.connect('uno_room_' + roomCode);
+
+        conn.on('open', () => {
+            closeModals();
+            switchScreen('screen-room');
+            showAlert('เข้าร่วมห้องสำเร็จ!');
+            
+            conn.send({
+                type: 'JOIN_ROOM',
+                player: {
+                    id: gameState.myPlayerId,
+                    name: gameState.myName,
+                    isBot: false,
+                    hand: []
+                },
+                peerId: id
+            });
+        });
+
+        conn.on('data', (data) => {
+            if (data.type === 'ROOM_STATE_UPDATE') {
+                gameState.players = data.players;
+                updateRoomUI();
+                if (data.gameStarted) {
+                    gameState.gameActive = true;
+                    switchScreen('screen-game');
+                    updateGameUI();
+                }
+            } else if (data.type === 'ROOM_FULL') {
+                showAlert('ห้องเต็มแล้ว (สูงสุด 6 คน)');
+                leaveRoom();
+            }
+        });
+
+        conn.on('error', (err) => {
+            showAlert('ไม่พบห้องที่ตรงกับรหัสนี้');
+        });
+    });
+}
+
+function broadcastRoomState(gameStarted = false) {
+    if (!gameState.isHost) return;
+    connections.forEach(c => {
+        c.send({
+            type: 'ROOM_STATE_UPDATE',
+            players: gameState.players,
+            gameStarted: gameStarted
+        });
+    });
 }
 
 function addBotPlayer() {
+    if (!gameState.isHost) return;
     if (gameState.players.length >= 6) {
         showAlert('ห้องเต็มแล้ว (สูงสุด 6 คน)');
         return;
@@ -118,11 +211,14 @@ function addBotPlayer() {
     });
 
     updateRoomUI();
+    broadcastRoomState();
 }
 
 function removePlayer(id) {
+    if (!gameState.isHost) return;
     gameState.players = gameState.players.filter(p => p.id !== id);
     updateRoomUI();
+    broadcastRoomState();
 }
 
 function updateRoomUI() {
@@ -154,12 +250,17 @@ function updateRoomUI() {
     });
 
     const startBtn = document.getElementById('btn-start-game');
-    if (gameState.players.length >= 2) {
-        startBtn.removeAttribute('disabled');
-        startBtn.textContent = 'เริ่มเกม (' + gameState.players.length + ' คน)';
+    if (gameState.isHost) {
+        startBtn.style.display = 'block';
+        if (gameState.players.length >= 2) {
+            startBtn.removeAttribute('disabled');
+            startBtn.textContent = 'เริ่มเกม (' + gameState.players.length + ' คน)';
+        } else {
+            startBtn.setAttribute('disabled', 'true');
+            startBtn.textContent = 'ต้องการผู้เล่นอย่างน้อย 2 คน';
+        }
     } else {
-        startBtn.setAttribute('disabled', 'true');
-        startBtn.textContent = 'ต้องการผู้เล่นอย่างน้อย 2 คน';
+        startBtn.style.display = 'none';
     }
 }
 
@@ -178,6 +279,10 @@ function leaveRoom() {
     gameState.gameActive = false;
     gameState.roomCode = '';
     gameState.players = [];
+    if (peer) {
+        peer.destroy();
+        peer = null;
+    }
     switchScreen('screen-lobby');
     showAlert('ออกจากห้องแล้ว');
 }
@@ -212,7 +317,7 @@ function createDeck() {
 }
 
 function startGame() {
-    if (gameState.players.length < 2) return;
+    if (!gameState.isHost || gameState.players.length < 2) return;
 
     gameState.deck = createDeck();
     gameState.discardPile = [];
@@ -238,6 +343,7 @@ function startGame() {
     gameState.activeColor = firstCard.color;
     gameState.activeValue = firstCard.value;
 
+    broadcastRoomState(true);
     switchScreen('screen-game');
     updateGameUI();
     showAlert('เกมเริ่มต้นขึ้นแล้ว!');
@@ -263,7 +369,7 @@ function updateGameUI() {
 
     const topCard = gameState.discardPile[gameState.discardPile.length - 1];
     const discardContainer = document.getElementById('discard-pile');
-    discardContainer.innerHTML = renderCardHTML(topCard, false);
+    discardContainer.innerHTML = getCardVisualHTML(topCard);
 
     const opponentsContainer = document.getElementById('opponents-container');
     opponentsContainer.innerHTML = '';
@@ -276,7 +382,7 @@ function updateGameUI() {
         
         div.innerHTML = '<div class="text-xs font-semibold mb-1 text-zinc-300 truncate max-w-[100px]">' + p.name + '</div>' +
                         '<div class="flex items-center space-x-1 my-1">' +
-                        '<div class="w-8 h-11 bg-zinc-900 border border-zinc-700 rounded flex items-center justify-center text-[10px] font-mono text-zinc-400 shadow">UNO</div>' +
+                        '<div class="w-8 h-11 uno-card-back rounded flex items-center justify-center text-[9px] font-mono text-zinc-400 shadow">UNO</div>' +
                         '<span class="text-xs font-bold text-white">x' + p.hand.length + '</span></div>' +
                         '<span class="text-[10px] text-zinc-500">' + (p.isBot ? 'บอท' : 'ผู้เล่น') + '</span>';
         opponentsContainer.appendChild(div);
@@ -291,7 +397,7 @@ function updateGameUI() {
     myPlayer.hand.forEach((card, cardIndex) => {
         const playable = isMyTurn && isValidPlay(card, topCard, gameState.activeColor);
         const cardEl = document.createElement('div');
-        cardEl.className = 'uno-card cursor-pointer shrink-0 w-24 h-36 rounded-xl border flex flex-col justify-between p-2.5 select-none relative shadow-md ' + (playable ? 'border-white bg-zinc-900 hover:-translate-y-3' : 'border-zinc-800 bg-zinc-950/60 opacity-60');
+        cardEl.className = 'uno-card cursor-pointer shrink-0 w-24 h-36 border ' + (playable ? 'border-white hover:-translate-y-3 shadow-xl' : 'border-zinc-800 opacity-60');
         cardEl.innerHTML = getCardVisualHTML(card);
         
         if (playable) {
@@ -320,38 +426,45 @@ function getColorClass(color) {
 
 function getCardVisualHTML(card) {
     let label = '';
-    let sublabel = COLOR_NAMES_TH[card.color] || card.color;
     let borderCol = '';
+    let bgInner = 'bg-zinc-950/80';
 
-    if (card.color === 'red') borderCol = 'border-red-500 text-red-400';
-    else if (card.color === 'blue') borderCol = 'border-blue-500 text-blue-400';
-    else if (card.color === 'green') borderCol = 'border-green-500 text-green-400';
-    else if (card.color === 'yellow') borderCol = 'border-yellow-500 text-yellow-400';
-    else borderCol = 'border-white text-white';
+    if (card.color === 'red') {
+        borderCol = 'border-red-500 text-red-500';
+        bgInner = 'bg-red-950/20';
+    } else if (card.color === 'blue') {
+        borderCol = 'border-blue-500 text-blue-400';
+        bgInner = 'bg-blue-950/20';
+    } else if (card.color === 'green') {
+        borderCol = 'border-green-500 text-green-400';
+        bgInner = 'bg-green-950/20';
+    } else if (card.color === 'yellow') {
+        borderCol = 'border-yellow-500 text-yellow-400';
+        bgInner = 'bg-yellow-950/20';
+    } else {
+        borderCol = 'border-white text-white';
+        bgInner = 'bg-zinc-900';
+    }
 
     if (card.type === 'number') {
         label = card.value;
     } else if (card.type === 'action') {
-        if (card.action === 'skip') label = '🚫 ข้าม';
-        else if (card.action === 'reverse') label = '🔄 กลับ';
+        if (card.action === 'skip') label = '🚫';
+        else if (card.action === 'reverse') label = '🔄';
         else if (card.action === 'draw2') label = '+2';
     } else if (card.type === 'wild') {
-        label = card.action === 'wild' ? '🌈 เปลี่ยนสี' : '🔥 +4';
+        label = card.action === 'wild' ? '🌈' : '🔥+4';
     } else if (card.type === 'special') {
-        if (card.action === 'trade') label = '🔄 แลก';
-        if (card.action === 'spin') label = '🔀 หมุดทิศ';
+        if (card.action === 'trade') label = '🔄แลก';
+        if (card.action === 'spin') label = '🔀หมุด';
     }
 
-    return '<div class="flex justify-between items-start text-xs font-mono font-bold ' + borderCol + '">' +
-           '<span>' + label + '</span><span class="text-[9px] uppercase">' + sublabel + '</span></div>' +
-           '<div class="flex items-center justify-center my-auto">' +
-           '<span class="text-xl font-bold font-mono ' + borderCol + '">' + label + '</span></div>' +
-           '<div class="flex justify-between items-end text-[10px] font-mono text-zinc-500">' +
-           '<span>UNO</span><span>' + card.type + '</span></div>';
-}
-
-function renderCardHTML(card, isSmall = false) {
-    return '<div class="w-full h-full rounded-xl border border-zinc-700 bg-zinc-900 flex flex-col justify-between p-2.5 shadow-inner">' + getCardVisualHTML(card) + '</div>';
+    return '<div class="w-full h-full p-2.5 flex flex-col justify-between border-2 ' + borderCol + ' ' + bgInner + ' rounded-xl relative select-none">' +
+           '<div class="flex flex-col leading-none font-mono font-bold text-xs"><span>' + label + '</span></div>' +
+           '<div class="absolute inset-0 m-auto w-14 h-20 rounded-full border border-current opacity-20 pointer-events-none flex items-center justify-center"></div>' +
+           '<div class="flex items-center justify-center my-auto z-10"><span class="text-2xl font-black tracking-tighter drop-shadow">' + label + '</span></div>' +
+           '<div class="flex flex-col leading-none font-mono font-bold text-xs text-right rotate-180"><span>' + label + '</span></div>' +
+           '</div>';
 }
 
 function isValidPlay(card, topCard, activeColor) {
