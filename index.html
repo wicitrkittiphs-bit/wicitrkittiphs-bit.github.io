@@ -6,6 +6,8 @@
     <title>UNO คลาสสิกขาวดำ</title>
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
+    <!-- PeerJS for Real Multiplayer Room Connection -->
+    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
 </head>
@@ -124,11 +126,12 @@
                     <div class="flex flex-col md:flex-row items-center justify-center space-y-6 md:space-y-0 md:space-x-12 my-auto">
                         
                         <!-- Draw Deck -->
-                        <div onclick="drawCard()" class="group cursor-pointer flex flex-col items-center">
-                            <div class="w-24 h-36 bg-zinc-900 border-2 border-dashed border-zinc-700 rounded-xl flex flex-col items-center justify-center shadow-xl group-hover:border-white transition relative overflow-hidden">
-                                <div class="absolute inset-0 bg-white/5 opacity-0 group-hover:opacity-100 transition"></div>
-                                <span class="font-bold text-lg tracking-widest text-zinc-400 group-hover:text-white">UNO</span>
-                                <span class="text-[10px] text-zinc-500 mt-1">จั่วการ์ด</span>
+                        <div onclick="drawCard()" class="flex flex-col items-center">
+                            <div class="w-24 h-36 uno-card-back cursor-pointer group hover:scale-105 transition">
+                                <div class="uno-card-back-inner">
+                                    <span class="font-black text-sm tracking-widest text-white group-hover:scale-110 transition">UNO</span>
+                                    <span class="text-[9px] text-zinc-400 mt-1">จั่วการ์ด</span>
+                                </div>
                             </div>
                             <span class="text-xs text-zinc-400 mt-2 font-medium">กองจั่ว (<span id="deck-count">0</span>)</span>
                         </div>
@@ -144,7 +147,7 @@
 
                         <!-- Discard Pile -->
                         <div class="flex flex-col items-center">
-                            <div id="discard-pile" class="w-24 h-36 bg-zinc-900 border border-zinc-700 rounded-xl flex items-center justify-center shadow-2xl relative overflow-hidden">
+                            <div id="discard-pile" class="w-24 h-36 uno-card shadow-2xl relative flex items-center justify-center">
                                 <!-- Top card rendered here -->
                             </div>
                             <span class="text-xs text-zinc-400 mt-2 font-medium">กองทิ้ง</span>
