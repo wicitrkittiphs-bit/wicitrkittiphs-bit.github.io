@@ -1,39 +1,30 @@
 body {
-    font-family: 'Sarabun', sans-serif;
-    background-color: #0f0f0f;
-    color: #f3f4f6;
+    font-family: 'Inter', sans-serif;
+    background-color: #0d0d0d;
+    color: #f9f9f9;
 }
+/* Custom Uno Card Style (Monochrome Sleek) */
 .uno-card {
-    transition: transform 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275), box-shadow 0.25s ease;
-    border-radius: 12px;
-    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.5);
-    position: relative;
-    overflow: hidden;
-    background: #18181b;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    user-select: none;
 }
 .uno-card:hover {
-    transform: translateY(-12px) scale(1.03);
-    box-shadow: 0 20px 25px -5px rgba(255, 255, 255, 0.15);
+    transform: translateY(-10px) scale(1.05);
 }
 .uno-card-back {
-    background: linear-gradient(135deg, #18181b 0%, #09090b 100%);
-    border: 2px solid #3f3f46;
-    border-radius: 12px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
+    background: repeating-linear-gradient(
+        45deg,
+        #1a1a1a,
+        #1a1a1a 10px,
+        #333333 10px,
+        #333333 20px
+    );
 }
-.uno-card-back-inner {
-    width: 75%;
-    height: 82%;
-    border: 1px dashed #52525b;
-    border-radius: 8px;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    background: #000000;
+/* Hide scrollbars for clean UI */
+.no-scrollbar::-webkit-scrollbar {
+    display: none;
 }
-::-webkit-scrollbar { width: 6px; height: 6px; }
-::-webkit-scrollbar-track { background: #1a1a1a; }
-::-webkit-scrollbar-thumb { background: #4a4a4a; border-radius: 3px; }
+.no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+}
