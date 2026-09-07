@@ -21,7 +21,7 @@ let gameState = {
 
 let peer = null;
 let conn = null;
-let connections = [];
+let connections = []; // เก็บการเชื่อมต่อของเพื่อนทุกคน (กรณีเป็น Host)
 
 function showAlert(msg, duration = 3000) {
     const banner = document.getElementById('game-alert-banner');
@@ -80,7 +80,7 @@ function confirmCreateRoom() {
     closeModals();
     updateRoomUI();
     switchScreen('screen-room');
-    showAlert('สร้างห้องสำเร็จ! รอเพื่อนเข้าร่วมด้วยรหัส ' + code);
+    showAlert('สร้างห้องสำเร็จ! รหัสห้องคือ: ' + code);
 }
 
 function confirmJoinRoom() {
@@ -98,12 +98,14 @@ function confirmJoinRoom() {
     initGuestPeer(code);
 }
 
+// ระบบ Host เชื่อมต่อ PeerJS
 function initHostPeer(roomCode) {
     if (peer) peer.destroy();
-    peer = new Peer('uno_room_' + roomCode);
+    // ใช้ Prefix ชัดเจนเพื่อให้หากันเจอ
+    peer = new Peer('uno_monochrome_room_' + roomCode);
 
     peer.on('open', (id) => {
-        console.log('Host connected:', id);
+        console.log('Host เปิดห้องสำเร็จ ID:', id);
     });
 
     peer.on('connection', (connection) => {
@@ -117,9 +119,15 @@ function initHostPeer(roomCode) {
                 }
                 let newPlayer = data.player;
                 newPlayer.connectionId = connection.peer;
-                gameState.players.push(newPlayer);
+                
+                // ตรวจสอบว่ามีผู้เล่นนี้ในห้องหรือยัง
+                if (!gameState.players.some(p => p.id === newPlayer.id)) {
+                    gameState.players.push(newPlayer);
+                }
                 updateRoomUI();
                 broadcastRoomState();
+            } else if (data.type === 'PLAYER_ACTION') {
+                // รองรับการกระทำของผู้เล่นคนอื่นในอนาคต
             }
         });
 
@@ -132,22 +140,26 @@ function initHostPeer(roomCode) {
     });
 
     peer.on('error', (err) => {
-        showAlert('รหัสห้องนี้อาจถูกใช้งานแล้ว ลองเปลี่ยนรหัสอื่น');
+        console.error(err);
+        showAlert('รหัสห้องนี้ถูกใช้งานแล้ว กรุณาใช้รหัสอื่น');
     });
 }
 
+// ระบบ Guest เข้าร่วมห้องผ่าน PeerJS
 function initGuestPeer(roomCode) {
     if (peer) peer.destroy();
     peer = new Peer();
 
     peer.on('open', (id) => {
-        conn = peer.connect('uno_room_' + roomCode);
+        const hostPeerId = 'uno_monochrome_room_' + roomCode;
+        conn = peer.connect(hostPeerId);
 
         conn.on('open', () => {
             closeModals();
             switchScreen('screen-room');
-            showAlert('เข้าร่วมห้องสำเร็จ!');
+            showAlert('เชื่อมต่อเข้าห้องสำเร็จ!');
             
+            // ส่งข้อมูลขอเข้าร่วมห้องไปยัง Host
             conn.send({
                 type: 'JOIN_ROOM',
                 player: {
@@ -176,19 +188,26 @@ function initGuestPeer(roomCode) {
         });
 
         conn.on('error', (err) => {
-            showAlert('ไม่พบห้องที่ตรงกับรหัสนี้');
+            console.error(err);
+            showAlert('ไม่พบห้องที่มีรหัสนี้ หรือโฮสต์ยังไม่เปิดห้อง');
         });
+    });
+
+    peer.on('error', (err) => {
+        showAlert('การเชื่อมต่อล้มเหลว กรุณาลองใหม่อีกครั้ง');
     });
 }
 
 function broadcastRoomState(gameStarted = false) {
     if (!gameState.isHost) return;
     connections.forEach(c => {
-        c.send({
-            type: 'ROOM_STATE_UPDATE',
-            players: gameState.players,
-            gameStarted: gameStarted
-        });
+        if (c && c.open) {
+            c.send({
+                type: 'ROOM_STATE_UPDATE',
+                players: gameState.players,
+                gameStarted: gameStarted
+            });
+        }
     });
 }
 
