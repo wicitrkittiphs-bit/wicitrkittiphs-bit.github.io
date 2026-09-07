@@ -129,7 +129,7 @@
     <div id="modal-create-room" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
         <div class="bg-zinc-900 border border-zinc-800 rounded-2xl w-full max-w-sm p-6 shadow-2xl">
             <h3 class="text-lg font-bold mb-4">สร้างห้องใหม่</h3>
-            <input type="text" id="input-create-code" class="w-full bg-zinc-950 border border-zinc-700 rounded-xl px-4 py-2.5 text-sm font-mono mb-4">
+            <input type="text" id="input-create-code" class="w-full bg-zinc-950 border border-zinc-700 rounded-xl px-4 py-2.5 text-sm font-mono mb-4" placeholder="ระบุรหัสห้อง 4 หลัก">
             <div class="flex space-x-3">
                 <button onclick="closeModals()" class="w-1/2 py-2.5 bg-zinc-800 rounded-xl text-xs">ยกเลิก</button>
                 <button onclick="confirmCreateRoom()" class="w-1/2 py-2.5 bg-white text-black font-semibold rounded-xl text-xs">สร้างห้อง</button>
@@ -140,7 +140,7 @@
     <div id="modal-join-room" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
         <div class="bg-zinc-900 border border-zinc-800 rounded-2xl w-full max-w-sm p-6 shadow-2xl">
             <h3 class="text-lg font-bold mb-4">เข้าร่วมห้อง</h3>
-            <input type="text" id="input-join-code" placeholder="กรอกรหัสห้อง..." class="w-full bg-zinc-950 border border-zinc-700 rounded-xl px-4 py-2.5 text-sm font-mono mb-4 uppercase">
+            <input type="text" id="input-join-code" placeholder="กรอกรหัสห้องเพื่อน..." class="w-full bg-zinc-950 border border-zinc-700 rounded-xl px-4 py-2.5 text-sm font-mono mb-4 uppercase">
             <div class="flex space-x-3">
                 <button onclick="closeModals()" class="w-1/2 py-2.5 bg-zinc-800 rounded-xl text-xs">ยกเลิก</button>
                 <button onclick="confirmJoinRoom()" class="w-1/2 py-2.5 bg-white text-black font-semibold rounded-xl text-xs">เข้าร่วม</button>
@@ -211,6 +211,7 @@
         }
 
         function showJoinRoomModal() {
+            document.getElementById('input-join-code').value = '';
             document.getElementById('modal-join-room').classList.remove('hidden');
         }
 
@@ -221,11 +222,12 @@
             gameState.isHost = true;
             gameState.players = [{ id: gameState.myPlayerId, name: gameState.myName, isBot: false, hand: [] }];
 
-            localStorage.setItem('uno_room_' + code, JSON.stringify(gameState.players));
+            // บันทึกห้องเจาะจงด้วยคีย์ห้องนี้จริง ๆ
+            localStorage.setItem('uno_my_room_' + code, JSON.stringify(gameState));
             closeModals();
             updateRoomUI();
             switchScreen('screen-room');
-            showAlert('สร้างห้องสำเร็จ!');
+            showAlert('สร้างห้องสำเร็จ! รหัสห้อง: ' + code);
             startRoomSync();
         }
 
@@ -234,22 +236,26 @@
             gameState.myName = document.getElementById('input-username').value.trim() || 'ผู้เล่น';
             if (!code) { showAlert('กรุณากรอกรหัสห้อง'); return; }
 
-            let data = localStorage.getItem('uno_room_' + code);
-            if (!data) {
-                showAlert('ไม่พบห้องรหัสนี้ กรุณาตรวจสอบรหัสอีกครั้ง');
+            let roomDataStr = localStorage.getItem('uno_my_room_' + code);
+            if (!roomDataStr) {
+                showAlert('ไม่พบห้องรหัส "' + code + '" กรุณาตรวจสอบรหัสอีกครั้ง');
                 return;
             }
 
+            let hostRoom = JSON.parse(roomDataStr);
             gameState.roomCode = code;
             gameState.isHost = false;
-            gameState.players = JSON.parse(data);
+            gameState.players = hostRoom.players;
 
+            // ตรวจสอบว่ามีตัวเราอยู่ในห้องแล้วหรือยัง
             if (!gameState.players.some(p => p.id === gameState.myPlayerId)) {
                 if (gameState.players.length >= 6) { showAlert('ห้องเต็มแล้ว (สูงสุด 6 คน)'); return; }
                 gameState.players.push({ id: gameState.myPlayerId, name: gameState.myName, isBot: false, hand: [] });
             }
 
-            localStorage.setItem('uno_room_' + code, JSON.stringify(gameState.players));
+            hostRoom.players = gameState.players;
+            localStorage.setItem('uno_my_room_' + code, JSON.stringify(hostRoom));
+
             closeModals();
             updateRoomUI();
             switchScreen('screen-room');
@@ -262,17 +268,16 @@
             if (syncInterval) clearInterval(syncInterval);
             syncInterval = setInterval(() => {
                 if (!gameState.roomCode) return;
-                let roomData = localStorage.getItem('uno_room_' + gameState.roomCode);
-                if (roomData) {
-                    let parsed = JSON.parse(roomData);
-                    // ถ้าเกมเริ่มแล้ว ให้กระโดดเข้าหน้าเกมอัตโนมัติ
-                    if (parsed.gameActive && !gameState.gameActive) {
-                        gameState = parsed;
+                let roomDataStr = localStorage.getItem('uno_my_room_' + gameState.roomCode);
+                if (roomDataStr) {
+                    let roomData = JSON.parse(roomDataStr);
+                    if (roomData.gameActive && !gameState.gameActive) {
+                        gameState = roomData;
                         switchScreen('screen-game');
                         updateGameUI();
                         return;
                     }
-                    gameState.players = parsed;
+                    gameState.players = roomData.players;
                     updateRoomUI();
                 }
             }, 1000);
@@ -282,14 +287,25 @@
             if (!gameState.isHost) { showAlert('เฉพาะหัวหน้าห้องเท่านั้นที่เพิ่มบอทได้'); return; }
             if (gameState.players.length >= 6) { showAlert('ห้องเต็มแล้ว'); return; }
             gameState.players.push({ id: 'bot_' + Math.random(), name: 'บอท AI ' + (gameState.players.length + 1), isBot: true, hand: [] });
-            localStorage.setItem('uno_room_' + gameState.roomCode, JSON.stringify(gameState.players));
+            
+            let roomDataStr = localStorage.getItem('uno_my_room_' + gameState.roomCode);
+            if (roomDataStr) {
+                let roomData = JSON.parse(roomDataStr);
+                roomData.players = gameState.players;
+                localStorage.setItem('uno_my_room_' + gameState.roomCode, JSON.stringify(roomData));
+            }
             updateRoomUI();
         }
 
         function removePlayer(id) {
             if (!gameState.isHost) return;
             gameState.players = gameState.players.filter(p => p.id !== id);
-            localStorage.setItem('uno_room_' + gameState.roomCode, JSON.stringify(gameState.players));
+            let roomDataStr = localStorage.getItem('uno_my_room_' + gameState.roomCode);
+            if (roomDataStr) {
+                let roomData = JSON.parse(roomDataStr);
+                roomData.players = gameState.players;
+                localStorage.setItem('uno_my_room_' + gameState.roomCode, JSON.stringify(roomData));
+            }
             updateRoomUI();
         }
 
@@ -318,7 +334,7 @@
                 startBtn.disabled = gameState.players.length < 2;
                 startBtn.textContent = gameState.players.length < 2 ? 'ต้องการผู้เล่นอย่างน้อย 2 คน' : 'เริ่มเกม (' + gameState.players.length + ' คน)';
             } else {
-                startBtn.style.display = 'none'; // ผู้เล่นทั่วไปรอหัวหน้าห้องกดเริ่ม
+                startBtn.style.display = 'none';
             }
         }
 
@@ -330,10 +346,14 @@
         function leaveRoom() {
             if (syncInterval) clearInterval(syncInterval);
             if (gameState.isHost && gameState.roomCode) {
-                localStorage.removeItem('uno_room_' + gameState.roomCode);
+                localStorage.removeItem('uno_my_room_' + gameState.roomCode);
             } else if (gameState.roomCode) {
-                gameState.players = gameState.players.filter(p => p.id !== gameState.myPlayerId);
-                localStorage.setItem('uno_room_' + gameState.roomCode, JSON.stringify(gameState.players));
+                let roomDataStr = localStorage.getItem('uno_my_room_' + gameState.roomCode);
+                if (roomDataStr) {
+                    let roomData = JSON.parse(roomDataStr);
+                    roomData.players = roomData.players.filter(p => p.id !== gameState.myPlayerId);
+                    localStorage.setItem('uno_my_room_' + gameState.roomCode, JSON.stringify(roomData));
+                }
             }
             gameState.gameActive = false;
             switchScreen('screen-lobby');
@@ -368,7 +388,7 @@
             gameState.discardPile.push(first);
             gameState.activeColor = first.color;
 
-            localStorage.setItem('uno_room_' + gameState.roomCode, JSON.stringify(gameState));
+            localStorage.setItem('uno_my_room_' + gameState.roomCode, JSON.stringify(gameState));
             switchScreen('screen-game');
             updateGameUI();
             showAlert('เริ่มเกม!');
@@ -434,7 +454,7 @@
             if (gameState.deck.length === 0) gameState.deck = gameState.discardPile.splice(0, gameState.discardPile.length - 1);
             cur.hand.push(gameState.deck.pop());
             gameState.hasDrawnThisTurn = true;
-            if (gameState.isHost) localStorage.setItem('uno_room_' + gameState.roomCode, JSON.stringify(gameState));
+            if (gameState.isHost) localStorage.setItem('uno_my_room_' + gameState.roomCode, JSON.stringify(gameState));
             updateGameUI();
         }
 
@@ -480,7 +500,7 @@
 
         function nextTurn() {
             gameState.turnIndex = getNextIdx(gameState.direction);
-            if (gameState.isHost) localStorage.setItem('uno_room_' + gameState.roomCode, JSON.stringify(gameState));
+            if (gameState.isHost) localStorage.setItem('uno_my_room_' + gameState.roomCode, JSON.stringify(gameState));
             updateGameUI();
         }
 
