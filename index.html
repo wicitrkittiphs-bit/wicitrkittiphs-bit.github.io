@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="th" class="h-full">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>UNO คลาสสิกขาวดำ</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- PeerJS for Real Multiplayer Room Connection -->
+    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body class="h-full flex flex-col antialiased selection:bg-white selection:text-black">
+
+    <div id="app" class="flex-1 flex flex-col h-full overflow-hidden">
+        
+        <!-- HEADER -->
+        <header class="flex items-center justify-between px-6 py-4 border-b border-zinc-800 bg-zinc-950/80 backdrop-blur z-20">
+            <div class="flex items-center space-x-3">
+                <div class="w-10 h-10 rounded-xl bg-white text-black flex items-center justify-center font-bold text-xl tracking-tighter shadow-lg shadow-white/10">UNO</div>
+                <div>
+                    <h1 class="font-bold text-lg leading-tight tracking-wide">เกมอูโน่ขาวดำ (Monochrome Uno)</h1>
+                    <p class="text-xs text-zinc-400">รองรับ 2-6 คน พร้อมบอทและการ์ดพิเศษภาษาไทย</p>
+                </div>
+            </div>
+            <div id="header-actions" class="hidden flex items-center space-x-3">
+                <span id="room-badge" class="px-3 py-1 bg-zinc-900 border border-zinc-700 text-xs rounded-full font-mono text-zinc-300"></span>
+                <button onclick="leaveRoom()" class="px-3 py-1.5 bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 hover:border-zinc-500 rounded-lg text-xs font-medium transition flex items-center space-x-1.5 text-zinc-300 hover:text-white">
+                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"></path></svg>
+                    <span>ออกจากห้อง</span>
+                </button>
+            </div>
+        </header>
+
+        <!-- MAIN VIEW CONTAINER -->
+        <main class="flex-1 overflow-y-auto relative flex flex-col">
+
+            <!-- SCREEN 1: LOBBY / ROOM SETUP -->
+            <div id="screen-lobby" class="flex-1 flex items-center justify-center p-6">
+                <div class="w-full max-w-md bg-zinc-900/90 border border-zinc-800 rounded-2xl p-8 shadow-2xl backdrop-blur-md">
+                    <div class="text-center mb-8">
+                        <h2 class="text-2xl font-bold tracking-tight mb-2">เข้าสู่ห้องเล่นเกม</h2>
+                        <p class="text-sm text-zinc-400">สร้างห้องใหม่ด้วยรหัสผ่าน หรือเข้าร่วมห้องของเพื่อน</p>
+                    </div>
+
+                    <div class="space-y-5">
+                        <div>
+                            <label class="block text-xs font-medium text-zinc-400 uppercase tracking-wider mb-2">ชื่อผู้เล่นของคุณ</label>
+                            <input type="text" id="input-username" placeholder="ระบุชื่อของคุณ..." value="ผู้เล่น" maxlength="15" class="w-full bg-zinc-950 border border-zinc-700 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-white transition">
+                        </div>
+
+                        <div class="grid grid-cols-2 gap-3 pt-2">
+                            <button onclick="showCreateRoomModal()" class="w-full py-3.5 bg-white text-black font-semibold rounded-xl hover:bg-zinc-200 transition shadow-lg shadow-white/5 flex items-center justify-center space-x-2 text-sm">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+                                <span>สร้างห้องใหม่</span>
+                            </button>
+                            <button onclick="showJoinRoomModal()" class="w-full py-3.5 bg-zinc-800 hover:bg-zinc-700 text-white font-semibold rounded-xl border border-zinc-700 transition flex items-center justify-center space-x-2 text-sm">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h7a3 3 0 013 3v1"></path></svg>
+                                <span>เข้าร่วมห้อง</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="mt-8 pt-6 border-t border-zinc-800/80 text-xs text-zinc-500 space-y-2">
+                        <div class="font-medium text-zinc-400">ฟีเจอร์เด่นภายในเกม:</div>
+                        <ul class="list-disc list-inside space-y-1 text-zinc-400">
+                            <li>รองรับผู้เล่นและบอทรวมกัน 2 - 6 คน</li>
+                            <li>ระบบดูจำนวนการ์ดคู่ต่อสู้แบบหลังการ์ด</li>
+                            <li>การ์ดพิเศษไทย: <strong>"การ์ดแลกการ์ด"</strong> และ <strong>"การ์ดหมุดทิศทาง"</strong></li>
+                            <li>ระบบห้องด้วยรหัสผ่านส่วนตัว</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+
+            <!-- SCREEN 2: ROOM WAITING ROOM -->
+            <div id="screen-room" class="hidden flex-1 flex flex-col items-center justify-center p-6">
+                <div class="w-full max-w-xl bg-zinc-900/90 border border-zinc-800 rounded-2xl p-8 shadow-2xl">
+                    <div class="flex items-center justify-between pb-6 border-b border-zinc-800 mb-6">
+                        <div>
+                            <span class="text-xs text-zinc-400 uppercase tracking-widest block mb-1">รหัสห้อง (Room Code)</span>
+                            <div id="display-room-code" class="text-3xl font-mono font-bold tracking-wider text-white">----</div>
+                        </div>
+                        <button onclick="copyRoomCode()" class="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-xs font-medium rounded-lg border border-zinc-700 transition flex items-center space-x-1.5">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3"></path></svg>
+                            <span>คัดลอกรหัส</span>
+                        </button>
+                    </div>
+
+                    <div class="mb-6">
+                        <div class="flex items-center justify-between mb-3">
+                            <h3 class="text-sm font-semibold text-zinc-300">รายชื่อผู้เล่นในห้อง (<span id="player-count">0</span>/6)</h3>
+                            <button id="btn-add-bot" onclick="addBotPlayer()" class="text-xs text-zinc-400 hover:text-white underline transition">+ เพิ่มบอท AI</button>
+                        </div>
+                        <div id="room-players-list" class="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-60 overflow-y-auto pr-1">
+                            <!-- Populated dynamically -->
+                        </div>
+                    </div>
+
+                    <div class="flex space-x-3 pt-4 border-t border-zinc-800">
+                        <button onclick="leaveRoom()" class="w-1/3 py-3 bg-zinc-800 hover:bg-zinc-700 font-semibold rounded-xl text-sm transition text-zinc-300 hover:text-white border border-zinc-700">
+                            ออกจากห้อง
+                        </button>
+                        <button id="btn-start-game" onclick="startGame()" class="w-2/3 py-3 bg-white text-black font-semibold rounded-xl hover:bg-zinc-200 transition text-sm shadow-lg shadow-white/10 disabled:opacity-50 disabled:cursor-not-allowed">
+                            เริ่มเกม (ต้องมีอย่างน้อย 2 คน)
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- SCREEN 3: GAME BOARD -->
+            <div id="screen-game" class="hidden flex-1 flex flex-col h-full overflow-hidden">
+                
+                <!-- OPPONENTS PANEL (Top) -->
+                <div class="bg-zinc-950/60 border-b border-zinc-800/80 px-4 py-3">
+                    <div id="opponents-container" class="flex items-center justify-center space-x-4 overflow-x-auto py-1">
+                        <!-- Populated by JS -->
+                    </div>
+                </div>
+
+                <!-- MAIN TABLE AREA -->
+                <div class="flex-1 flex flex-col md:flex-row items-center justify-center p-6 relative overflow-hidden bg-gradient-to-b from-zinc-950 to-zinc-900">
+                    
+                    <!-- Table Center Info & Deck -->
+                    <div class="flex flex-col md:flex-row items-center justify-center space-y-6 md:space-y-0 md:space-x-12 my-auto">
+                        
+                        <!-- Draw Deck -->
+                        <div onclick="drawCard()" class="flex flex-col items-center">
+                            <div class="w-24 h-36 uno-card-back cursor-pointer group hover:scale-105 transition">
+                                <div class="uno-card-back-inner">
+                                    <span class="font-black text-sm tracking-widest text-white group-hover:scale-110 transition">UNO</span>
+                                    <span class="text-[9px] text-zinc-400 mt-1">จั่วการ์ด</span>
+                                </div>
+                            </div>
+                            <span class="text-xs text-zinc-400 mt-2 font-medium">กองจั่ว (<span id="deck-count">0</span>)</span>
+                        </div>
+
+                        <!-- Direction & Turn Status Indicator -->
+                        <div class="flex flex-col items-center text-center">
+                            <div id="turn-direction-indicator" class="w-12 h-12 rounded-full border border-zinc-700 bg-zinc-900 flex items-center justify-center mb-2 shadow-inner text-white font-bold text-lg transition-transform duration-300">
+                                ↻
+                            </div>
+                            <div id="game-status-text" class="text-sm font-medium text-zinc-200">รอบของ...</div>
+                            <div id="active-color-badge" class="mt-1 px-2.5 py-0.5 rounded text-[10px] uppercase font-bold tracking-wider bg-zinc-800 text-zinc-300 border border-zinc-700">สีปัจจุบัน: -</div>
+                        </div>
+
+                        <!-- Discard Pile -->
+                        <div class="flex flex-col items-center">
+                            <div id="discard-pile" class="w-24 h-36 uno-card shadow-2xl relative flex items-center justify-center">
+                                <!-- Top card rendered here -->
+                            </div>
+                            <span class="text-xs text-zinc-400 mt-2 font-medium">กองทิ้ง</span>
+                        </div>
+                    </div>
+
+                    <!-- Floating Action Notification Banner -->
+                    <div id="game-alert-banner" class="absolute top-4 left-1/2 -translate-x-1/2 bg-zinc-900/95 border border-zinc-700 px-5 py-2.5 rounded-full text-xs font-medium text-zinc-200 shadow-xl transition-all duration-300 opacity-0 pointer-events-none z-30">
+                        ประกาศข้อความในเกม
+                    </div>
+                </div>
+
+                <!-- PLAYER HAND (Bottom) -->
+                <div class="bg-zinc-950 border-t border-zinc-800 p-4 flex flex-col">
+                    <div class="flex items-center justify-between mb-2 px-2">
+                        <div class="flex items-center space-x-3">
+                            <span class="text-xs font-semibold text-zinc-300 uppercase tracking-wider">การ์ดในมือคุณ (<span id="my-card-count">0</span>)</span>
+                            <button onclick="sayUno()" id="btn-say-uno" class="px-3 py-1 bg-white text-black text-xs font-bold rounded-lg hover:bg-zinc-200 transition shadow">อูโน่! (UNO)</button>
+                        </div>
+                        <div class="flex items-center space-x-2">
+                            <button onclick="passTurn()" id="btn-pass" class="px-3 py-1 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-xs text-zinc-300 rounded-lg transition hidden">ผ่านตา</button>
+                        </div>
+                    </div>
+
+                    <!-- Scrollable My Cards -->
+                    <div id="my-hand-container" class="flex items-center space-x-3 overflow-x-auto py-3 px-2 min-h-[160px]">
+                        <!-- Populated by JS -->
+                    </div>
+                </div>
+            </div>
+
+        </main>
+    </div>
+
+    <!-- MODAL: CREATE ROOM -->
+    <div id="modal-create-room" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+        <div class="bg-zinc-900 border border-zinc-800 rounded-2xl w-full max-w-sm p-6 shadow-2xl">
+            <h3 class="text-lg font-bold mb-4">สร้างห้องใหม่</h3>
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-xs font-medium text-zinc-400 mb-1">รหัสห้อง (Room Code)</label>
+                    <input type="text" id="input-create-code" placeholder="เช่น 1234 หรือกำหนดเอง" class="w-full bg-zinc-950 border border-zinc-700 rounded-xl px-4 py-2.5 text-sm font-mono focus:outline-none focus:border-white">
+                </div>
+                <div class="flex space-x-3 pt-2">
+                    <button onclick="closeModals()" class="w-1/2 py-2.5 bg-zinc-800 hover:bg-zinc-700 rounded-xl text-xs font-medium transition">ยกเลิก</button>
+                    <button onclick="confirmCreateRoom()" class="w-1/2 py-2.5 bg-white text-black font-semibold rounded-xl hover:bg-zinc-200 transition text-xs">สร้างห้อง</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL: JOIN ROOM -->
+    <div id="modal-join-room" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+        <div class="bg-zinc-900 border border-zinc-800 rounded-2xl w-full max-w-sm p-6 shadow-2xl">
+            <h3 class="text-lg font-bold mb-4">เข้าร่วมห้อง</h3>
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-xs font-medium text-zinc-400 mb-1">รหัสห้องเพื่อน</label>
+                    <input type="text" id="input-join-code" placeholder="กรอกรหัสห้อง 4 หลัก..." class="w-full bg-zinc-950 border border-zinc-700 rounded-xl px-4 py-2.5 text-sm font-mono focus:outline-none focus:border-white uppercase">
+                </div>
+                <div class="flex space-x-3 pt-2">
+                    <button onclick="closeModals()" class="w-1/2 py-2.5 bg-zinc-800 hover:bg-zinc-700 rounded-xl text-xs font-medium transition">ยกเลิก</button>
+                    <button onclick="confirmJoinRoom()" class="w-1/2 py-2.5 bg-white text-black font-semibold rounded-xl hover:bg-zinc-200 transition text-xs">เข้าร่วม</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL: COLOR PICKER (For Wild Cards) -->
+    <div id="modal-color-picker" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+        <div class="bg-zinc-900 border border-zinc-800 rounded-2xl w-full max-w-sm p-6 text-center shadow-2xl">
+            <h3 class="text-lg font-bold mb-2">เลือกสีการ์ด</h3>
+            <p class="text-xs text-zinc-400 mb-6">เลือกสีที่คุณต้องการเปลี่ยนในเกม</p>
+            <div class="grid grid-cols-2 gap-3">
+                <button onclick="selectWildColor('red')" class="p-4 bg-zinc-800 hover:bg-zinc-700 border-2 border-red-500 rounded-xl font-bold text-red-400 transition">สีแดง (Red)</button>
+                <button onclick="selectWildColor('blue')" class="p-4 bg-zinc-800 hover:bg-zinc-700 border-2 border-blue-500 rounded-xl font-bold text-blue-400 transition">สีฟ้า (Blue)</button>
+                <button onclick="selectWildColor('green')" class="p-4 bg-zinc-800 hover:bg-zinc-700 border-2 border-green-500 rounded-xl font-bold text-green-400 transition">สีเขียว (Green)</button>
+                <button onclick="selectWildColor('yellow')" class="p-4 bg-zinc-800 hover:bg-zinc-700 border-2 border-yellow-500 rounded-xl font-bold text-yellow-400 transition">สีเหลือง (Yellow)</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL: CARD TRADE (การ์ดแลกการ์ด) -->
+    <div id="modal-card-trade" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+        <div class="bg-zinc-900 border border-zinc-800 rounded-2xl w-full max-w-md p-6 shadow-2xl">
+            <h3 class="text-lg font-bold mb-1">การ์ดแลกการ์ด (Trade Card)</h3>
+            <p class="text-xs text-zinc-400 mb-4">เลือกผู้เล่นถัดไปที่คุณต้องการทำการแลกเปลี่ยนการ์ดในมือด้วย</p>
+            <div id="trade-players-list" class="space-y-2 mb-6 max-h-48 overflow-y-auto pr-1">
+                <!-- Populated dynamically -->
+            </div>
+            <button onclick="closeModals()" class="w-full py-2.5 bg-zinc-800 hover:bg-zinc-700 rounded-xl text-xs font-medium transition">ยกเลิก</button>
+        </div>
+    </div>
+
+    <!-- MODAL: GAME OVER / WINNER -->
+    <div id="modal-game-over" class="fixed inset-0 bg-black/90 backdrop-blur-md z-50 flex items-center justify-center p-4 hidden">
+        <div class="bg-zinc-900 border border-zinc-800 rounded-2xl w-full max-w-md p-8 text-center shadow-2xl">
+            <div class="w-16 h-16 bg-white text-black rounded-2xl mx-auto flex items-center justify-center text-3xl font-bold mb-4 shadow-lg shadow-white/10">👑</div>
+            <h3 class="text-2xl font-bold mb-2" id="winner-title">ผู้ชนะเกม!</h3>
+            <p class="text-sm text-zinc-400 mb-6" id="winner-subtitle">ผู้เล่นชนะการแข่งขันเรียบร้อยแล้ว</p>
+            <button onclick="returnToRoom()" class="w-full py-3.5 bg-white text-black font-semibold rounded-xl hover:bg-zinc-200 transition text-sm shadow-lg shadow-white/10">
+                กลับสู่หน้าห้องรอ
+            </button>
+        </div>
+    </div>
+
+    <script src="game.js"></script>
+</body>
+</html>
