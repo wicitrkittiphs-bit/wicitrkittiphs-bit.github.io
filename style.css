@@ -1,0 +1,192 @@
+body {
+            font-family: 'Kanit', sans-serif;
+            background: radial-gradient(circle at center, #2d3748, #1a202c);
+            color: white;
+            overflow-x: hidden;
+            touch-action: manipulation;
+        }
+
+        .uno-card {
+            width: 80px;
+            height: 120px;
+            border-radius: 8px;
+            border: 4px solid white;
+            position: relative;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            user-select: none;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s, margin 0.2s;
+            background-color: #333; /* Fallback */
+            overflow: hidden;
+            flex-shrink: 0;
+        }
+
+        .uno-card.playable:hover {
+            transform: translateY(-15px) scale(1.05);
+            box-shadow: 0 8px 16px rgba(0,0,0,0.4);
+            z-index: 50;
+        }
+
+        .uno-card-disabled {
+            filter: brightness(0.6);
+            cursor: not-allowed;
+        }
+
+        .uno-card .inner-oval {
+            position: absolute;
+            width: 130%;
+            height: 60%;
+            background: white;
+            border-radius: 50%;
+            transform: rotate(-35deg);
+            z-index: 1;
+            box-shadow: inset 0 0 10px rgba(0,0,0,0.2);
+        }
+
+        .uno-card .card-value {
+            position: relative;
+            z-index: 2;
+            font-size: 2.5rem;
+            font-weight: 700;
+            line-height: 1;
+            text-shadow: 2px 2px 0px rgba(0,0,0,0.2);
+        }
+
+        .uno-card .card-value-small-top {
+            position: absolute;
+            top: 4px;
+            left: 6px;
+            z-index: 2;
+            font-size: 1.2rem;
+            font-weight: 700;
+            line-height: 1;
+        }
+
+        .uno-card .card-value-small-bottom {
+            position: absolute;
+            bottom: 4px;
+            right: 6px;
+            z-index: 2;
+            font-size: 1.2rem;
+            font-weight: 700;
+            line-height: 1;
+            transform: rotate(180deg);
+        }
+
+        /* Color Classes */
+        .card-red { background: linear-gradient(135deg, #ff5c5c, #d32f2f); }
+        .card-red .card-value, .card-red .card-value-small-top, .card-red .card-value-small-bottom { color: #d32f2f; }
+        
+        .card-blue { background: linear-gradient(135deg, #4da6ff, #1976d2); }
+        .card-blue .card-value, .card-blue .card-value-small-top, .card-blue .card-value-small-bottom { color: #1976d2; }
+        
+        .card-green { background: linear-gradient(135deg, #66bb6a, #388e3c); }
+        .card-green .card-value, .card-green .card-value-small-top, .card-green .card-value-small-bottom { color: #388e3c; }
+        
+        .card-yellow { background: linear-gradient(135deg, #ffca28, #fbc02d); }
+        .card-yellow .card-value, .card-yellow .card-value-small-top, .card-yellow .card-value-small-bottom { color: #f57f17; }
+        
+        .card-wild { background: conic-gradient(#d32f2f 90deg, #1976d2 90deg 180deg, #388e3c 180deg 270deg, #fbc02d 270deg 360deg); }
+        .card-wild .inner-oval { background: #222; }
+        .card-wild .card-value, .card-wild .card-value-small-top, .card-wild .card-value-small-bottom { color: white; text-shadow: none; }
+
+        .card-back {
+            background: #222;
+            border-color: #444;
+        }
+        .card-back::before {
+            content: "UNO";
+            color: #d32f2f;
+            font-size: 1.5rem;
+            font-weight: bold;
+            text-shadow: 1px 1px 0px yellow;
+            transform: rotate(-35deg);
+        }
+        .card-back .inner-oval { background: #111; border: 2px solid #d32f2f;}
+
+        .hand-container {
+            display: flex;
+            justify-content: center;
+            max-width: 100vw;
+            padding: 20px;
+            overflow-x: auto;
+            flex-wrap: wrap;
+            gap: -20px; /* Overlap effect */
+        }
+        .hand-container .uno-card {
+            margin-left: -30px;
+        }
+        .hand-container .uno-card:first-child {
+            margin-left: 0;
+        }
+
+        @media (min-width: 768px) {
+            .uno-card { width: 100px; height: 150px; border-width: 5px; }
+            .uno-card .card-value { font-size: 3.5rem; }
+            .hand-container .uno-card { margin-left: -40px; }
+        }
+
+        .avatar {
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            background-color: #4a5568;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 1.2rem;
+            border: 3px solid transparent;
+            transition: all 0.3s ease;
+        }
+
+        .turn-active .avatar {
+            border-color: #fbbf24;
+            box-shadow: 0 0 15px rgba(251, 191, 36, 0.6);
+            transform: scale(1.1);
+        }
+
+        .color-pulse-red { box-shadow: 0 0 20px 5px #ef4444; }
+        .color-pulse-blue { box-shadow: 0 0 20px 5px #3b82f6; }
+        .color-pulse-green { box-shadow: 0 0 20px 5px #22c55e; }
+        .color-pulse-yellow { box-shadow: 0 0 20px 5px #eab308; }
+
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: rgba(0,0,0,0.1); }
+        ::-webkit-scrollbar-thumb { background: #4a5568; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #718096; }
+
+        /* Glassmorphism containers */
+        .glass-panel {
+            background: rgba(30, 41, 59, 0.7);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 1rem;
+        }
+
+        /* Notifications */
+        #toast-container {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 9999;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        .toast {
+            background-color: rgba(15, 23, 42, 0.9);
+            color: white;
+            padding: 12px 20px;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+            border-left: 4px solid #3b82f6;
+            animation: slideIn 0.3s ease-out, fadeOut 0.5s ease-out 2.5s forwards;
+            opacity: 1;
+        }
+        @keyframes slideIn { from { transform: translateX(100%); } to { transform: translateX(0); } }
+        @keyframes fadeOut { from { opacity: 1; } to { opacity: 0; } }
