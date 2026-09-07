@@ -1,743 +1,697 @@
-const COLORS = ['red', 'blue', 'green', 'yellow'];
-const COLOR_NAMES_TH = { red: 'สีแดง', blue: 'สีฟ้า', green: 'สีเขียว', yellow: 'สีเหลือง', wild: 'อิสระ' };
+import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+import { getAuth, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+import { getFirestore, collection, doc, setDoc, getDoc, updateDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+let app, db, auth, currentUser;
+const appId = typeof __app_id !== 'undefined' ? __app_id : 'monochrome-uno-default-app';
+const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : null;
 
 let gameState = {
-    roomCode: '',
+    roomCode: null,
     isHost: false,
+    playerName: '',
+    playerId: '',
     players: [],
-    myPlayerId: 'p_' + Math.random().toString(36).substring(2, 7),
-    myName: 'ผู้เล่น',
-    turnIndex: 0,
-    direction: 1,
-    deck: [],
+    hands: {},
     discardPile: [],
-    activeColor: 'red',
-    activeValue: null,
-    gameActive: false,
-    pendingWildCard: null,
-    hasDrawnThisTurn: false,
-    saidUnoPlayers: {}
+    drawPile: [],
+    currentTurnIndex: 0,
+    direction: 1, 
+    currentColor: 'RED',
+    winner: null,
+    status: 'WAITING'
+};
+let unsubscribeRoom = null;
+let pendingCardToPlay = null;
+
+window.onload = async function() {
+    if (firebaseConfig) {
+        try {
+            app = initializeApp(firebaseConfig);
+            db = getFirestore(app);
+            auth = getAuth(app);
+            if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                await signInWithCustomToken(auth, __initial_auth_token);
+            } else {
+                await signInAnonymously(auth);
+            }
+            currentUser = auth.currentUser;
+        } catch (e) {
+            console.error("Firebase init error:", e);
+        }
+    }
+    gameState.playerId = currentUser ? currentUser.uid : 'user_' + Math.random().toString(36).substring(2, 9);
 };
 
-function showAlert(msg, duration = 3000) {
-    const banner = document.getElementById('game-alert-banner');
-    banner.textContent = msg;
-    banner.style.opacity = '1';
-    banner.style.transform = 'translate(-50%, 10px)';
-    setTimeout(() => {
-        banner.style.opacity = '0';
-        banner.style.transform = 'translate(-50%, 0)';
-    }, duration);
-}
-
-function switchScreen(screenId) {
-    document.getElementById('screen-lobby').classList.add('hidden');
-    document.getElementById('screen-room').classList.add('hidden');
-    document.getElementById('screen-game').classList.add('hidden');
-    document.getElementById('header-actions').classList.add('hidden');
-
-    document.getElementById(screenId).classList.remove('hidden');
-    if (screenId !== 'screen-lobby') {
-        document.getElementById('header-actions').classList.remove('hidden');
+window.showCreateRoomModal = function() {
+    const name = document.getElementById('input-username').value.trim();
+    if (!name) {
+        showModal("กรุณากรอกชื่อผู้เล่นก่อน", "แจ้งเตือน");
+        return;
     }
-}
+    gameState.playerName = name;
+    document.getElementById('view-lobby').classList.add('hidden');
+    document.getElementById('box-create-room').classList.remove('hidden');
+};
 
-function closeModals() {
-    document.getElementById('modal-create-room').classList.add('hidden');
-    document.getElementById('modal-join-room').classList.add('hidden');
-    document.getElementById('modal-color-picker').classList.add('hidden');
-    document.getElementById('modal-card-trade').classList.add('hidden');
-    document.getElementById('modal-game-over').classList.add('hidden');
-}
+window.showJoinRoomModal = function() {
+    const name = document.getElementById('input-username').value.trim();
+    if (!name) {
+        showModal("กรุณากรอกชื่อผู้เล่นก่อน", "แจ้งเตือน");
+        return;
+    }
+    gameState.playerName = name;
+    document.getElementById('view-lobby').classList.add('hidden');
+    document.getElementById('box-join-room').classList.remove('hidden');
+};
 
-function showCreateRoomModal() {
-    document.getElementById('input-create-code').value = Math.floor(1000 + Math.random() * 9000).toString();
-    document.getElementById('modal-create-room').classList.remove('hidden');
-}
+window.backToLobbyMain = function() {
+    document.getElementById('box-create-room').classList.add('hidden');
+    document.getElementById('box-join-room').classList.add('hidden');
+    document.getElementById('view-lobby').classList.remove('hidden');
+};
 
-function showJoinRoomModal() {
-    document.getElementById('modal-join-room').classList.remove('hidden');
-}
-
-function confirmCreateRoom() {
-    const code = document.getElementById('input-create-code').value.trim() || '1234';
-    gameState.myName = document.getElementById('input-username').value.trim() || 'ผู้เล่น';
+window.returnToLobby = function() {
+    if (unsubscribeRoom) {
+        unsubscribeRoom();
+        unsubscribeRoom = null;
+    }
+    gameState.roomCode = null;
+    gameState.isHost = false;
+    gameState.players = [];
+    gameState.hands = {};
     
-    gameState.roomCode = code;
+    document.getElementById('view-room').classList.add('hidden');
+    document.getElementById('view-game').classList.add('hidden');
+    document.getElementById('box-create-room').classList.add('hidden');
+    document.getElementById('box-join-room').classList.add('hidden');
+    document.getElementById('view-lobby').classList.remove('hidden');
+    document.getElementById('header-user-info').classList.add('hidden');
+};
+
+window.showModal = function(message, title = "แจ้งเตือน") {
+    document.getElementById('modal-title').innerText = title;
+    document.getElementById('modal-message').innerText = message;
+    document.getElementById('modal-container').classList.remove('hidden');
+};
+
+window.closeModal = function() {
+    document.getElementById('modal-container').classList.add('hidden');
+};
+
+window.createRoom = async function() {
+    const roomCode = document.getElementById('input-room-code').value.trim().toUpperCase();
+    if (!roomCode) {
+        showModal("กรุณากรอกรหัสห้อง", "แจ้งเตือน");
+        return;
+    }
+
+    gameState.roomCode = roomCode;
     gameState.isHost = true;
-    gameState.players = [{
-        id: gameState.myPlayerId,
-        name: gameState.myName,
+
+    const initialPlayers = [{
+        id: gameState.playerId,
+        name: gameState.playerName,
         isBot: false,
-        hand: []
+        isHost: true,
+        cardCount: 0
     }];
 
-    // บันทึกห้องลง LocalStorage เพื่อให้เพื่อนในเครื่องเดียวกันกดเข้าร่วมได้ทันที
-    localStorage.setItem('uno_room_' + code, JSON.stringify(gameState.players));
+    const initialRoomData = {
+        code: roomCode,
+        status: 'WAITING',
+        players: initialPlayers,
+        hands: {},
+        discardPile: [],
+        drawPile: [],
+        currentTurnIndex: 0,
+        direction: 1,
+        currentColor: 'RED',
+        winner: null
+    };
 
-    closeModals();
-    updateRoomUI();
-    switchScreen('screen-room');
-    showAlert('สร้างห้องสำเร็จ! รหัสห้อง: ' + code);
+    if (db) {
+        try {
+            const roomsColRef = collection(db, 'artifacts', appId, 'public_rooms');
+            const roomRef = doc(roomsColRef, 'uno_rooms_' + roomCode);
+            const docSnap = await getDoc(roomRef);
+            if (docSnap.exists()) {
+                showModal("รหัสห้องนี้มีอยู่แล้ว กรุณาใช้รหัสอื่น", "ข้อผิดพลาด");
+                return;
+            }
+            await setDoc(roomRef, initialRoomData);
+            listenToRoom(roomCode);
+        } catch (e) {
+            console.error("Error creating room in Firestore:", e);
+            startLocalRoom(initialRoomData);
+        }
+    } else {
+        startLocalRoom(initialRoomData);
+    }
 
-    // เปิดระบบอัปเดตห้องอัตโนมัติ
-    startRoomSync();
-}
+    transitionToRoomView();
+};
 
-function confirmJoinRoom() {
-    const code = document.getElementById('input-join-code').value.trim().toUpperCase();
-    gameState.myName = document.getElementById('input-username').value.trim() || 'ผู้เล่น';
-    
-    if (!code) {
-        showAlert('กรุณากรอกรหัสห้อง');
+window.joinRoom = async function() {
+    const roomCode = document.getElementById('input-join-code').value.trim().toUpperCase();
+    if (!roomCode) {
+        showModal("กรุณากรอกรหัสห้อง", "แจ้งเตือน");
         return;
     }
 
-    gameState.roomCode = code;
+    gameState.roomCode = roomCode;
     gameState.isHost = false;
 
-    // ดึงข้อมูลห้องจาก LocalStorage
-    let roomData = localStorage.getItem('uno_room_' + code);
-    if (roomData) {
-        gameState.players = JSON.parse(roomData);
-    } else {
-        // หากสร้างห้องแบบจำลอง ให้สร้างผู้เล่นสมมติขึ้นมารับรหัส
-        gameState.players = [
-            { id: 'host_p', name: 'หัวหน้าห้อง', isBot: false, hand: [] }
-        ];
-    }
-
-    // เพิ่มตัวเราเข้าไปในรายชื่อห้อง
-    if (!gameState.players.some(p => p.id === gameState.myPlayerId)) {
-        if (gameState.players.length >= 6) {
-            showAlert('ห้องเต็มแล้ว (สูงสุด 6 คน)');
-            return;
+    if (db) {
+        try {
+            const roomsColRef = collection(db, 'artifacts', appId, 'public_rooms');
+            const roomRef = doc(roomsColRef, 'uno_rooms_' + roomCode);
+            const docSnap = await getDoc(roomRef);
+            if (!docSnap.exists()) {
+                showModal("ไม่พบห้องที่มีรหัสนี้", "ข้อผิดพลาด");
+                return;
+            }
+            const data = docSnap.data();
+            if (data.status !== 'WAITING') {
+                showModal("ห้องนี้กำลังเล่นอยู่แล้ว ไม่สามารถเข้าร่วมได้", "ข้อผิดพลาด");
+                return;
+            }
+            if (data.players.length >= 6) {
+                showModal("ห้องเต็มแล้ว (สูงสุด 6 คน)", "ข้อผิดพลาด");
+                return;
+            }
+            
+            let players = data.players;
+            if (!players.some(p => p.id === gameState.playerId)) {
+                players.push({
+                    id: gameState.playerId,
+                    name: gameState.playerName,
+                    isBot: false,
+                    isHost: false,
+                    cardCount: 0
+                });
+                await updateDoc(roomRef, { players });
+            }
+            listenToRoom(roomCode);
+            transitionToRoomView();
+        } catch (e) {
+            console.error("Error joining room:", e);
+            showModal("ไม่สามารถเข้าร่วมห้องได้", "ข้อผิดพลาด");
         }
-        gameState.players.push({
-            id: gameState.myPlayerId,
-            name: gameState.myName,
-            isBot: false,
-            hand: []
-        });
+    } else {
+        showModal("โหมดออฟไลน์ไม่รองรับการเชื่อมต่อข้ามเครื่อง", "แจ้งเตือน");
     }
+};
 
-    localStorage.setItem('uno_room_' + code, JSON.stringify(gameState.players));
-
-    closeModals();
+function startLocalRoom(initialData) {
+    gameState.players = initialData.players;
+    gameState.status = 'WAITING';
     updateRoomUI();
-    switchScreen('screen-room');
-    showAlert('เข้าร่วมห้องสำเร็จ!');
-    startRoomSync();
 }
 
-let syncInterval = null;
-function startRoomSync() {
-    if (syncInterval) clearInterval(syncInterval);
-    syncInterval = setInterval(() => {
-        if (!gameState.roomCode) return;
-        let roomData = localStorage.getItem('uno_room_' + gameState.roomCode);
-        if (roomData) {
-            let parsed = JSON.parse(roomData);
-            if (parsed.length > 0) {
-                gameState.players = parsed;
-                updateRoomUI();
+function listenToRoom(roomCode) {
+    if (!db) return;
+    const roomsColRef = collection(db, 'artifacts', appId, 'public_rooms');
+    const roomRef = doc(roomsColRef, 'uno_rooms_' + roomCode);
+    unsubscribeRoom = onSnapshot(roomRef, (docSnap) => {
+        if (docSnap.exists()) {
+            const data = docSnap.data();
+            gameState.players = data.players;
+            gameState.hands = data.hands || {};
+            gameState.discardPile = data.discardPile || [];
+            gameState.drawPile = data.drawPile || [];
+            gameState.currentTurnIndex = data.currentTurnIndex || 0;
+            gameState.direction = data.direction || 1;
+            gameState.currentColor = data.currentColor || 'RED';
+            gameState.winner = data.winner || null;
+            gameState.status = data.status;
+
+            if (gameState.status === 'WAITING') {
+                transitionToRoomView();
+            } else if (gameState.status === 'PLAYING') {
+                transitionToGameView();
             }
         }
-    }, 1000);
-}
-
-function addBotPlayer() {
-    if (gameState.players.length >= 6) {
-        showAlert('ห้องเต็มแล้ว (สูงสุด 6 คน)');
-        return;
-    }
-    const botNames = ['บอทสมชาย', 'บอทสุดสวย', 'บอทโปรแกรมเมอร์', 'บอทนักซิ่ง', 'บอทอัจฉริยะ'];
-    const existingNames = gameState.players.map(p => p.name);
-    const availableNames = botNames.filter(n => !existingNames.includes(n));
-    const botName = availableNames[Math.floor(Math.random() * availableNames.length)] || ('บอท ' + (gameState.players.length + 1));
-
-    gameState.players.push({
-        id: 'bot_' + Math.random().toString(36).substring(2, 7),
-        name: botName,
-        isBot: true,
-        hand: []
+    }, (error) => {
+        console.error("Room snapshot error:", error);
     });
-
-    if (gameState.roomCode) {
-        localStorage.setItem('uno_room_' + gameState.roomCode, JSON.stringify(gameState.players));
-    }
-    updateRoomUI();
 }
 
-function removePlayer(id) {
-    gameState.players = gameState.players.filter(p => p.id !== id);
-    if (gameState.roomCode) {
-        localStorage.setItem('uno_room_' + gameState.roomCode, JSON.stringify(gameState.players));
+function transitionToRoomView() {
+    document.getElementById('view-lobby').classList.add('hidden');
+    document.getElementById('box-create-room').classList.add('hidden');
+    document.getElementById('box-join-room').classList.add('hidden');
+    document.getElementById('view-game').classList.add('hidden');
+    document.getElementById('view-room').classList.remove('hidden');
+    document.getElementById('header-user-info').classList.remove('hidden');
+    document.getElementById('header-player-name').innerText = gameState.playerName;
+    document.getElementById('room-display-code').innerText = gameState.roomCode;
+
+    const isHost = gameState.isHost || (gameState.players[0] && gameState.players[0].id === gameState.playerId);
+    gameState.isHost = isHost;
+
+    if (isHost) {
+        document.getElementById('host-bot-controls').classList.remove('hidden');
+        document.getElementById('host-start-container').classList.remove('hidden');
+        document.getElementById('guest-wait-container').classList.add('hidden');
+    } else {
+        document.getElementById('host-bot-controls').classList.add('hidden');
+        document.getElementById('host-start-container').classList.add('hidden');
+        document.getElementById('guest-wait-container').classList.remove('hidden');
     }
+
     updateRoomUI();
 }
 
 function updateRoomUI() {
-    document.getElementById('display-room-code').textContent = gameState.roomCode;
-    document.getElementById('room-badge').textContent = 'ห้อง: ' + gameState.roomCode;
-    document.getElementById('player-count').textContent = gameState.players.length;
-
-    const listContainer = document.getElementById('room-players-list');
-    listContainer.innerHTML = '';
-
+    document.getElementById('player-count').innerText = gameState.players.length;
+    const listEl = document.getElementById('room-players-list');
+    listEl.innerHTML = '';
     gameState.players.forEach((p, idx) => {
-        const isMe = p.id === gameState.myPlayerId;
         const div = document.createElement('div');
-        div.className = "flex items-center justify-between p-3 bg-zinc-950 border border-zinc-800 rounded-xl";
-        
-        let playerInfoHtml = '<div class="flex items-center space-x-3">';
-        playerInfoHtml += '<div class="w-8 h-8 rounded-lg bg-zinc-800 flex items-center justify-center font-bold text-xs">' + (idx + 1) + '</div>';
-        playerInfoHtml += '<div>';
-        playerInfoHtml += '<span class="text-sm font-medium ' + (isMe ? 'text-white font-bold' : 'text-zinc-300') + '">' + p.name + (isMe ? ' (คุณ)' : '') + '</span>';
-        playerInfoHtml += '<span class="block text-[10px] text-zinc-500">' + (p.isBot ? 'บอท AI' : 'ผู้เล่นจริง') + '</span>';
-        playerInfoHtml += '</div></div>';
-        
-        if (gameState.isHost && !isMe) {
-            playerInfoHtml += '<button onclick="removePlayer(\'' + p.id + '\')" class="text-xs text-red-400 hover:text-red-300 px-2 py-1">เตะออก</button>';
-        }
-        
-        div.innerHTML = playerInfoHtml;
-        listContainer.appendChild(div);
+        div.className = "flex items-center justify-between p-3 bg-mono-950 border border-mono-800 rounded-xl";
+        div.innerHTML = `
+            <div class="flex items-center space-x-3">
+                <div class="w-8 h-8 rounded-lg bg-mono-800 flex items-center justify-center font-bold text-white text-xs">${idx + 1}</div>
+                <div>
+                    <p class="font-semibold text-white text-sm">${p.name} ${p.isBot ? '<span class="text-xs bg-mono-700 px-1.5 py-0.5 rounded text-mono-300">บอท</span>' : ''}</p>
+                    <p class="text-xs text-mono-500">${p.isHost ? 'หัวหน้าห้อง' : 'ผู้เล่น'}</p>
+                </div>
+            </div>
+            ${gameState.isHost && !p.isHost ? `<button onclick="kickPlayer('${p.id}')" class="text-xs text-red-400 hover:text-red-300">เตะออก</button>` : ''}
+        `;
+        listEl.appendChild(div);
     });
+}
 
-    const startBtn = document.getElementById('btn-start-game');
-    if (gameState.players.length >= 2) {
-        startBtn.removeAttribute('disabled');
-        startBtn.textContent = 'เริ่มเกม (' + gameState.players.length + ' คน)';
-    } else {
-        startBtn.setAttribute('disabled', 'true');
-        startBtn.textContent = 'ต้องการผู้เล่นอย่างน้อย 2 คน';
+window.addBot = async function() {
+    if (gameState.players.length >= 6) {
+        showModal("ห้องเต็มแล้ว (สูงสุด 6 คน)", "แจ้งเตือน");
+        return;
     }
-}
-
-function copyRoomCode() {
-    const code = gameState.roomCode;
-    const textarea = document.createElement('textarea');
-    textarea.value = code;
-    document.body.appendChild(textarea);
-    textarea.select();
-    document.execCommand('copy');
-    document.body.removeChild(textarea);
-    showAlert('คัดลอกรหัสห้องเรียบร้อย!');
-}
-
-function leaveRoom() {
-    gameState.gameActive = false;
-    if (syncInterval) clearInterval(syncInterval);
-    if (gameState.roomCode) {
-        localStorage.removeItem('uno_room_' + gameState.roomCode);
+    const botNum = gameState.players.filter(p => p.isBot).length + 1;
+    const botPlayer = {
+        id: 'bot_' + Math.random().toString(36).substring(2, 7),
+        name: `บอท AI ${botNum}`,
+        isBot: true,
+        isHost: false,
+        cardCount: 0
+    };
+    gameState.players.push(botPlayer);
+    if (db && gameState.roomCode) {
+        const roomsColRef = collection(db, 'artifacts', appId, 'public_rooms');
+        const roomRef = doc(roomsColRef, 'uno_rooms_' + gameState.roomCode);
+        await updateDoc(roomRef, { players: gameState.players });
     }
-    gameState.roomCode = '';
-    gameState.players = [];
-    switchScreen('screen-lobby');
-    showAlert('ออกจากห้องแล้ว');
-}
+    updateRoomUI();
+};
 
-function createDeck() {
+window.kickPlayer = async function(id) {
+    gameState.players = gameState.players.filter(p => p.id !== id);
+    if (db && gameState.roomCode) {
+        const roomsColRef = collection(db, 'artifacts', appId, 'public_rooms');
+        const roomRef = doc(roomsColRef, 'uno_rooms_' + gameState.roomCode);
+        await updateDoc(roomRef, { players: gameState.players });
+    }
+    updateRoomUI();
+};
+
+const COLORS = ['RED', 'BLUE', 'GREEN', 'YELLOW'];
+const VALUES = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'SKIP', 'REVERSE', 'DRAW2'];
+
+function generateDeck() {
     let deck = [];
     COLORS.forEach(color => {
-        deck.push({ type: 'number', color: color, value: 0, id: Math.random() });
-        for (let v = 1; v <= 9; v++) {
-            deck.push({ type: 'number', color: color, value: v, id: Math.random() });
-            deck.push({ type: 'number', color: color, value: v, id: Math.random() });
-        }
-        for (let i = 0; i < 2; i++) {
-            deck.push({ type: 'action', action: 'skip', color: color, id: Math.random() });
-            deck.push({ type: 'action', action: 'reverse', color: color, id: Math.random() });
-            deck.push({ type: 'action', action: 'draw2', color: color, id: Math.random() });
-        }
+        VALUES.forEach(val => {
+            deck.push({ id: Math.random().toString(36).substring(2,9), color, value: val });
+            if (val !== '0') {
+                deck.push({ id: Math.random().toString(36).substring(2,9), color, value: val });
+            }
+        });
     });
-
     for (let i = 0; i < 4; i++) {
-        deck.push({ type: 'wild', action: 'wild', color: 'wild', id: Math.random() });
-        deck.push({ type: 'wild', action: 'wild4', color: 'wild', id: Math.random() });
-        deck.push({ type: 'special', action: 'trade', color: 'wild', id: Math.random() });
-        deck.push({ type: 'special', action: 'spin', color: 'wild', id: Math.random() });
+        deck.push({ id: Math.random().toString(36).substring(2,9), color: 'WILD', value: 'WILD' });
+        deck.push({ id: Math.random().toString(36).substring(2,9), color: 'WILD', value: 'WILD_DRAW4' });
+        deck.push({ id: Math.random().toString(36).substring(2,9), color: 'WILD', value: 'SWAP' });
+        deck.push({ id: Math.random().toString(36).substring(2,9), color: 'WILD', value: 'COMPASS' });
     }
-
-    for (let i = deck.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [deck[i], deck[j]] = [deck[j], deck[i]];
-    }
-    return deck;
+    return deck.sort(() => Math.random() - 0.5);
 }
 
-function startGame() {
-    if (gameState.players.length < 2) return;
+window.startGame = async function() {
+    if (gameState.players.length < 2) {
+        showModal("ต้องการผู้เล่นอย่างน้อย 2 คนเพื่อเริ่มเกม", "แจ้งเตือน");
+        return;
+    }
 
-    gameState.deck = createDeck();
-    gameState.discardPile = [];
-    gameState.turnIndex = 0;
-    gameState.direction = 1;
-    gameState.gameActive = true;
-    gameState.saidUnoPlayers = {};
-
+    let deck = generateDeck();
+    let hands = {};
     gameState.players.forEach(p => {
-        p.hand = [];
+        hands[p.id] = [];
         for (let i = 0; i < 7; i++) {
-            p.hand.push(gameState.deck.pop());
+            hands[p.id].push(deck.pop());
         }
     });
 
-    let firstCard = gameState.deck.pop();
-    while (firstCard.type !== 'number') {
-        gameState.deck.unshift(firstCard);
-        firstCard = gameState.deck.pop();
+    let topCard = deck.pop();
+    while (topCard.color === 'WILD') {
+        deck.unshift(topCard);
+        topCard = deck.pop();
     }
 
-    gameState.discardPile.push(firstCard);
-    gameState.activeColor = firstCard.color;
-    gameState.activeValue = firstCard.value;
+    gameState.drawPile = deck;
+    gameState.discardPile = [topCard];
+    gameState.hands = hands;
+    gameState.currentTurnIndex = 0;
+    gameState.direction = 1;
+    gameState.currentColor = topCard.color;
+    gameState.status = 'PLAYING';
+    gameState.winner = null;
 
-    switchScreen('screen-game');
-    updateGameUI();
-    showAlert('เกมเริ่มต้นขึ้นแล้ว!');
-    checkBotTurn();
+    if (db && gameState.roomCode) {
+        const roomsColRef = collection(db, 'artifacts', appId, 'public_rooms');
+        const roomRef = doc(roomsColRef, 'uno_rooms_' + gameState.roomCode);
+        await updateDoc(roomRef, {
+            status: 'PLAYING',
+            hands: gameState.hands,
+            drawPile: gameState.drawPile,
+            discardPile: gameState.discardPile,
+            currentTurnIndex: gameState.currentTurnIndex,
+            direction: gameState.direction,
+            currentColor: gameState.currentColor,
+            winner: null,
+            players: gameState.players
+        });
+    }
+
+    transitionToGameView();
+};
+
+function transitionToGameView() {
+    document.getElementById('view-room').classList.add('hidden');
+    document.getElementById('view-game').classList.remove('hidden');
+    renderGame();
 }
 
-function updateGameUI() {
-    if (!gameState.gameActive) return;
-
-    document.getElementById('deck-count').textContent = gameState.deck.length;
-
-    const dirIndicator = document.getElementById('turn-direction-indicator');
-    dirIndicator.textContent = gameState.direction === 1 ? '↻' : '↺';
-    dirIndicator.style.transform = gameState.direction === 1 ? 'rotate(0deg)' : 'rotate(180deg)';
-
-    const currentTurnPlayer = gameState.players[gameState.turnIndex];
-    const isMyTurn = currentTurnPlayer.id === gameState.myPlayerId;
-    document.getElementById('game-status-text').textContent = isMyTurn ? 'ตาของคุณเล่น!' : 'ตาของ: ' + currentTurnPlayer.name;
-
-    const colorBadge = document.getElementById('active-color-badge');
-    colorBadge.textContent = 'สีปัจจุบัน: ' + (COLOR_NAMES_TH[gameState.activeColor] || gameState.activeColor);
-    colorBadge.className = 'mt-1 px-2.5 py-0.5 rounded text-[10px] uppercase font-bold tracking-wider border ' + getColorClass(gameState.activeColor);
-
-    const topCard = gameState.discardPile[gameState.discardPile.length - 1];
-    const discardContainer = document.getElementById('discard-pile');
-    discardContainer.innerHTML = getCardVisualHTML(topCard);
-
-    const opponentsContainer = document.getElementById('opponents-container');
-    opponentsContainer.innerHTML = '';
+function renderGame() {
+    const oppContainer = document.getElementById('opponents-container');
+    oppContainer.innerHTML = '';
+    
     gameState.players.forEach((p, idx) => {
-        if (p.id === gameState.myPlayerId) return;
+        if (p.id === gameState.playerId) return;
+        const handCount = gameState.hands[p.id] ? gameState.hands[p.id].length : 0;
+        const isCurrentTurn = gameState.currentTurnIndex === idx;
 
-        const isCurrent = idx === gameState.turnIndex;
         const div = document.createElement('div');
-        div.className = 'flex flex-col items-center p-3 rounded-xl border transition ' + (isCurrent ? 'bg-zinc-900 border-white shadow-lg' : 'bg-zinc-950/80 border-zinc-800');
-        
-        div.innerHTML = '<div class="text-xs font-semibold mb-1 text-zinc-300 truncate max-w-[100px]">' + p.name + '</div>' +
-                        '<div class="flex items-center space-x-1 my-1">' +
-                        '<div class="w-8 h-11 uno-card-back rounded flex items-center justify-center text-[9px] font-mono text-zinc-400 shadow">UNO</div>' +
-                        '<span class="text-xs font-bold text-white">x' + p.hand.length + '</span></div>' +
-                        '<span class="text-[10px] text-zinc-500">' + (p.isBot ? 'บอท' : 'ผู้เล่น') + '</span>';
-        opponentsContainer.appendChild(div);
+        div.className = `p-3 rounded-2xl border ${isCurrentTurn ? 'border-white bg-mono-800' : 'border-mono-800 bg-mono-900'} flex items-center justify-between shadow transition`;
+        div.innerHTML = `
+            <div class="flex items-center space-x-2 truncate">
+                <div class="w-7 h-7 rounded-lg bg-mono-800 flex items-center justify-center text-xs font-bold">${p.name.charAt(0)}</div>
+                <div class="truncate">
+                    <p class="text-xs font-bold text-white truncate">${p.name} ${p.isBot ? '(Bot)' : ''}</p>
+                    <p class="text-[10px] text-mono-400">การ์ด: <span class="font-bold text-white">${handCount}</span> ใบ</p>
+                </div>
+            </div>
+            <div class="uno-card-back w-8 h-12 rounded border border-mono-600 shadow-inner flex items-center justify-center">
+                <span class="text-[10px] font-black text-mono-400">${handCount}</span>
+            </div>
+        `;
+        oppContainer.appendChild(div);
     });
 
-    const myPlayer = gameState.players.find(p => p.id === gameState.myPlayerId) || gameState.players[0];
-    document.getElementById('my-card-count').textContent = myPlayer.hand.length;
+    const topCardEl = document.getElementById('discard-pile');
+    const topCard = gameState.discardPile[gameState.discardPile.length - 1];
+    if (topCard) {
+        topCardEl.innerHTML = `
+            <div class="text-xs font-semibold text-mono-600 uppercase tracking-widest">${topCard.color}</div>
+            <div class="text-xl font-black my-1">${getCardDisplayLabel(topCard.value)}</div>
+            <div class="text-[10px] text-mono-500">${topCard.color}</div>
+        `;
+    }
+
+    const isMyTurn = gameState.players[gameState.currentTurnIndex] && gameState.players[gameState.currentTurnIndex].id === gameState.playerId;
+    const currentTurnPlayer = gameState.players[gameState.currentTurnIndex];
     
-    const myHandContainer = document.getElementById('my-hand-container');
-    myHandContainer.innerHTML = '';
-    
-    myPlayer.hand.forEach((card, cardIndex) => {
-        const playable = isMyTurn && isValidPlay(card, topCard, gameState.activeColor);
+    document.getElementById('turn-status-text').innerText = isMyTurn ? "ตาของคุณเล่น!" : `ตาของ: ${currentTurnPlayer ? currentTurnPlayer.name : '-'}`;
+    document.getElementById('game-info-sub').innerText = `สีปัจจุบัน: ${gameState.currentColor}`;
+    document.getElementById('turn-direction-indicator').className = `w-3 h-3 rounded-full ${gameState.direction === 1 ? 'bg-white' : 'bg-mono-400'} animate-pulse`;
+
+    const myHand = gameState.hands[gameState.playerId] || [];
+    document.getElementById('my-card-count').innerText = myHand.length;
+    const handContainer = document.getElementById('my-hand-container');
+    handContainer.innerHTML = '';
+
+    myHand.forEach(card => {
         const cardEl = document.createElement('div');
-        cardEl.className = 'uno-card cursor-pointer shrink-0 w-24 h-36 border ' + (playable ? 'border-white hover:-translate-y-3 shadow-xl' : 'border-zinc-800 opacity-60');
-        cardEl.innerHTML = getCardVisualHTML(card);
-        
-        if (playable) {
-            cardEl.onclick = () => playCard(cardIndex);
-        }
-        myHandContainer.appendChild(cardEl);
+        cardEl.className = "uno-card flex-shrink-0 w-24 h-36 bg-white text-black rounded-2xl border-2 border-mono-300 shadow-xl flex flex-col justify-between p-3 cursor-pointer hover:-translate-y-3 transition";
+        cardEl.innerHTML = `
+            <div class="text-[10px] font-bold uppercase">${card.color}</div>
+            <div class="text-center font-black text-lg">${getCardDisplayLabel(card.value)}</div>
+            <div class="text-[10px] font-bold uppercase text-right">${card.color}</div>
+        `;
+        cardEl.onclick = () => playCard(card);
+        handContainer.appendChild(cardEl);
     });
 
-    const passBtn = document.getElementById('btn-pass');
-    if (isMyTurn && gameState.hasDrawnThisTurn) {
-        passBtn.classList.remove('hidden');
-    } else {
-        passBtn.classList.add('hidden');
+    if (gameState.winner) {
+        showModal(`ผู้ชนะเกมนี้คือ ${gameState.winner} 🎉`, "จบเกม!");
+    }
+
+    if (gameState.isHost && currentTurnPlayer && currentTurnPlayer.isBot && !gameState.winner) {
+        setTimeout(runBotTurn, 1200);
     }
 }
 
-function getColorClass(color) {
-    switch(color) {
-        case 'red': return 'bg-red-950/40 text-red-400 border-red-700';
-        case 'blue': return 'bg-blue-950/40 text-blue-400 border-blue-700';
-        case 'green': return 'bg-green-950/40 text-green-400 border-green-700';
-        case 'yellow': return 'bg-yellow-950/40 text-yellow-400 border-yellow-700';
-        default: return 'bg-zinc-800 text-white border-zinc-600';
+function getCardDisplayLabel(val) {
+    switch(val) {
+        case 'SKIP': return 'ข้าม';
+        case 'REVERSE': return 'กลับด้าน';
+        case 'DRAW2': return '+2';
+        case 'WILD': return 'WILD';
+        case 'WILD_DRAW4': return '+4';
+        case 'SWAP': return 'แลกการ์ด';
+        case 'COMPASS': return 'หมุดสลับ';
+        default: return val;
     }
 }
 
-function getCardVisualHTML(card) {
-    let label = '';
-    let borderCol = '';
-    let bgInner = 'bg-zinc-950/80';
-
-    if (card.color === 'red') {
-        borderCol = 'border-red-500 text-red-500';
-        bgInner = 'bg-red-950/20';
-    } else if (card.color === 'blue') {
-        borderCol = 'border-blue-500 text-blue-400';
-        bgInner = 'bg-blue-950/20';
-    } else if (card.color === 'green') {
-        borderCol = 'border-green-500 text-green-400';
-        bgInner = 'bg-green-950/20';
-    } else if (card.color === 'yellow') {
-        borderCol = 'border-yellow-500 text-yellow-400';
-        bgInner = 'bg-yellow-950/20';
-    } else {
-        borderCol = 'border-white text-white';
-        bgInner = 'bg-zinc-900';
-    }
-
-    if (card.type === 'number') {
-        label = card.value;
-    } else if (card.type === 'action') {
-        if (card.action === 'skip') label = '🚫';
-        else if (card.action === 'reverse') label = '🔄';
-        else if (card.action === 'draw2') label = '+2';
-    } else if (card.type === 'wild') {
-        label = card.action === 'wild' ? '🌈' : '🔥+4';
-    } else if (card.type === 'special') {
-        if (card.action === 'trade') label = '🔄แลก';
-        if (card.action === 'spin') label = '🔀หมุด';
-    }
-
-    return '<div class="w-full h-full p-2.5 flex flex-col justify-between border-2 ' + borderCol + ' ' + bgInner + ' rounded-xl relative select-none">' +
-           '<div class="flex flex-col leading-none font-mono font-bold text-xs"><span>' + label + '</span></div>' +
-           '<div class="absolute inset-0 m-auto w-14 h-20 rounded-full border border-current opacity-20 pointer-events-none flex items-center justify-center"></div>' +
-           '<div class="flex items-center justify-center my-auto z-10"><span class="text-2xl font-black tracking-tighter drop-shadow">' + label + '</span></div>' +
-           '<div class="flex flex-col leading-none font-mono font-bold text-xs text-right rotate-180"><span>' + label + '</span></div>' +
-           '</div>';
-}
-
-function isValidPlay(card, topCard, activeColor) {
-    if (card.color === 'wild' || card.type === 'wild' || card.type === 'special') return true;
-    if (card.color === activeColor) return true;
-    if (card.type === 'number' && topCard.type === 'number' && card.value === topCard.value) return true;
-    if (card.type === 'action' && topCard.type === 'action' && card.action === topCard.action) return true;
-    return false;
-}
-
-function drawCard() {
-    const currentTurnPlayer = gameState.players[gameState.turnIndex];
-    if (currentTurnPlayer.id !== gameState.myPlayerId) return;
-
-    if (gameState.hasDrawnThisTurn) {
-        showAlert('คุณได้จั่วการ์ดไปแล้วในตานี้');
+window.drawCard = async function() {
+    const currentTurnPlayer = gameState.players[gameState.currentTurnIndex];
+    if (!currentTurnPlayer || currentTurnPlayer.id !== gameState.playerId) {
+        showModal("ยังไม่ใช่ตาของคุณ", "แจ้งเตือน");
         return;
     }
 
-    if (gameState.deck.length === 0) {
-        const top = gameState.discardPile.pop();
-        gameState.deck = gameState.discardPile;
+    if (gameState.drawPile.length === 0) {
+        let top = gameState.discardPile.pop();
+        gameState.drawPile = gameState.discardPile.sort(() => Math.random() - 0.5);
         gameState.discardPile = [top];
-        for (let i = gameState.deck.length - 1; i > 0; i--) {
-            const j = Math.floor(Math.random() * (i + 1));
-            [gameState.deck[i], gameState.deck[j]] = [gameState.deck[j], gameState.deck[i]];
-        }
     }
 
-    const drawn = gameState.deck.pop();
-    currentTurnPlayer.hand.push(drawn);
-    gameState.hasDrawnThisTurn = true;
-    updateGameUI();
-    showAlert('คุณจั่วได้การ์ด 1 ใบ');
-}
+    if (gameState.drawPile.length > 0) {
+        let drawn = gameState.drawPile.pop();
+        if (!gameState.hands[gameState.playerId]) gameState.hands[gameState.playerId] = [];
+        gameState.hands[gameState.playerId].push(drawn);
+        
+        advanceTurn();
+        await syncGameState();
+    }
+};
 
-function passTurn() {
-    const currentTurnPlayer = gameState.players[gameState.turnIndex];
-    if (currentTurnPlayer.id !== gameState.myPlayerId) return;
-    endTurn();
-}
+window.playCard = async function(card) {
+    const currentTurnPlayer = gameState.players[gameState.currentTurnIndex];
+    if (!currentTurnPlayer || currentTurnPlayer.id !== gameState.playerId) {
+        showModal("ยังไม่ใช่ตาของคุณ", "แจ้งเตือน");
+        return;
+    }
 
-function playCard(cardIndex) {
-    const player = gameState.players[gameState.turnIndex];
-    const card = player.hand[cardIndex];
     const topCard = gameState.discardPile[gameState.discardPile.length - 1];
 
-    if (!isValidPlay(card, topCard, gameState.activeColor)) {
-        showAlert('ไม่สามารถเล่นการ์ดใบนี้ได้');
+    let isValid = false;
+    if (card.color === 'WILD') {
+        isValid = true;
+    } else if (card.color === gameState.currentColor || card.value === topCard.value) {
+        isValid = true;
+    }
+
+    if (!isValid) {
+        showModal("คุณไม่สามารถเล่นการ์ดใบนี้ได้", "ผิดกติกา");
         return;
     }
 
-    player.hand.splice(cardIndex, 1);
-    gameState.discardPile.push(card);
-    gameState.hasDrawnThisTurn = false;
-
-    if (player.hand.length === 0) {
-        triggerGameOver(player);
+    if (card.value === 'WILD' || card.value === 'WILD_DRAW4') {
+        pendingCardToPlay = card;
+        document.getElementById('color-picker-modal').classList.remove('hidden');
         return;
     }
 
-    handleCardEffect(card, player);
-}
-
-function handleCardEffect(card, player) {
-    let nextStep = gameState.direction;
-
-    if (card.type === 'number') {
-        gameState.activeColor = card.color;
-        gameState.activeValue = card.value;
-        endTurn();
-    } else if (card.type === 'action') {
-        gameState.activeColor = card.color;
-        if (card.action === 'skip') {
-            showAlert(player.name + ' ใช้การ์ดข้ามตา!');
-            nextStep *= 2;
-            advanceTurnCustom(nextStep);
-        } else if (card.action === 'reverse') {
-            gameState.direction *= -1;
-            showAlert(player.name + ' ใช้การ์ดสลับทิศทาง!');
-            endTurn();
-        } else if (card.action === 'draw2') {
-            showAlert(player.name + ' ใช้การ์ด +2!');
-            const targetIdx = getNextPlayerIndex(gameState.direction);
-            giveCardsToPlayer(targetIdx, 2);
-            nextStep *= 2;
-            advanceTurnCustom(nextStep);
-        }
-    } else if (card.type === 'wild') {
-        if (card.action === 'wild') {
-            if (player.id === gameState.myPlayerId) {
-                gameState.pendingWildCard = card;
-                document.getElementById('modal-color-picker').classList.remove('hidden');
-            } else {
-                const randColor = COLORS[Math.floor(Math.random() * COLORS.length)];
-                gameState.activeColor = randColor;
-                showAlert(player.name + ' เปลี่ยนสีเป็น ' + COLOR_NAMES_TH[randColor]);
-                endTurn();
-            }
-        } else if (card.action === 'wild4') {
-            if (player.id === gameState.myPlayerId) {
-                gameState.pendingWildCard = card;
-                document.getElementById('modal-color-picker').classList.remove('hidden');
-            } else {
-                const randColor = COLORS[Math.floor(Math.random() * COLORS.length)];
-                gameState.activeColor = randColor;
-                const targetIdx = getNextPlayerIndex(gameState.direction);
-                giveCardsToPlayer(targetIdx, 4);
-                showAlert(player.name + ' ใช้การ์ด +4');
-                advanceTurnCustom(gameState.direction * 2);
-            }
-        }
-    } else if (card.type === 'special') {
-        gameState.activeColor = COLORS[Math.floor(Math.random() * COLORS.length)];
-        if (card.action === 'trade') {
-            if (player.id === gameState.myPlayerId) {
-                openTradeModal();
-            } else {
-                executeBotTrade(player);
-            }
-        } else if (card.action === 'spin') {
-            gameState.direction *= -1;
-            showAlert(player.name + ' ใช้การ์ดหมุดทิศทาง สลับทิศเกมฉับพลัน!');
-            endTurn();
-        }
+    if (card.value === 'SWAP') {
+        pendingCardToPlay = card;
+        openSwapModalForPlayer();
+        return;
     }
-}
 
-function selectWildColor(color) {
-    gameState.activeColor = color;
-    closeModals();
-    showAlert('เปลี่ยนสีเป็น ' + COLOR_NAMES_TH[color] + ' เรียบร้อย');
-    
-    if (gameState.pendingWildCard && gameState.pendingWildCard.action === 'wild4') {
-        const targetIdx = getNextPlayerIndex(gameState.direction);
-        giveCardsToPlayer(targetIdx, 4);
-        advanceTurnCustom(gameState.direction * 2);
-    } else {
-        endTurn();
+    executeCardPlay(card, gameState.currentColor);
+};
+
+window.selectWildColor = function(color) {
+    document.getElementById('color-picker-modal').classList.add('hidden');
+    if (pendingCardToPlay) {
+        let card = pendingCardToPlay;
+        pendingCardToPlay = null;
+        executeCardPlay(card, color);
     }
-    gameState.pendingWildCard = null;
-}
+};
 
-function openTradeModal() {
-    const container = document.getElementById('trade-players-list');
-    container.innerHTML = '';
-    
-    gameState.players.forEach((p, idx) => {
-        if (p.id === gameState.myPlayerId) return;
-        const btn = document.createElement('button');
-        btn.className = "w-full p-3 bg-zinc-950 border border-zinc-800 hover:border-white rounded-xl flex items-center justify-between text-left transition";
-        btn.innerHTML = '<div><span class="text-sm font-bold text-white">' + p.name + '</span>' +
-                      '<span class="block text-xs text-zinc-400">มีการ์ด ' + p.hand.length + ' ใบ</span></div>' +
-                      '<span class="text-xs px-3 py-1.5 bg-white text-black font-semibold rounded-lg">เลือกแลก</span>';
-        btn.onclick = () => performTrade(p.id);
-        container.appendChild(btn);
+function openSwapModalForPlayer() {
+    const listEl = document.getElementById('swap-targets-list');
+    listEl.innerHTML = '';
+    gameState.players.forEach(p => {
+        if (p.id !== gameState.playerId) {
+            const btn = document.createElement('button');
+            btn.className = "w-full py-3 bg-mono-800 hover:bg-mono-700 text-white font-semibold rounded-xl text-sm border border-mono-700 transition flex justify-between px-4 items-center";
+            btn.innerHTML = `<span>${p.name}</span> <span class="text-xs text-mono-400">การ์ด ${gameState.hands[p.id] ? gameState.hands[p.id].length : 0} ใบ</span>`;
+            btn.onclick = () => executeSwapCard(p.id);
+            listEl.appendChild(btn);
+        }
     });
-
-    document.getElementById('modal-card-trade').classList.remove('hidden');
+    document.getElementById('swap-target-modal').classList.remove('hidden');
 }
 
-function performTrade(targetPlayerId) {
-    closeModals();
-    const me = gameState.players.find(p => p.id === gameState.myPlayerId);
-    const target = gameState.players.find(p => p.id === targetPlayerId);
+window.closeSwapModal = function() {
+    document.getElementById('swap-target-modal').classList.add('hidden');
+    pendingCardToPlay = null;
+};
 
-    const tempHand = [...me.hand];
-    me.hand = [...target.hand];
-    target.hand = tempHand;
+async function executeSwapCard(targetPlayerId) {
+    document.getElementById('swap-target-modal').classList.add('hidden');
+    let card = pendingCardToPlay;
+    pendingCardToPlay = null;
 
-    showAlert('แลกการ์ดกับผู้เล่น ' + target.name + ' สำเร็จ!');
-    endTurn();
-}
+    let myHand = gameState.hands[gameState.playerId] || [];
+    myHand = myHand.filter(c => c.id !== card.id);
+    gameState.hands[gameState.playerId] = myHand;
 
-function executeBotTrade(botPlayer) {
-    const opponents = gameState.players.filter(p => p.id !== botPlayer.id);
-    const target = opponents[Math.floor(Math.random() * opponents.length)];
+    let targetHand = gameState.hands[targetPlayerId] || [];
+    let myCurrentHand = [...gameState.hands[gameState.playerId]];
     
-    const temp = [...botPlayer.hand];
-    botPlayer.hand = [...target.hand];
-    target.hand = temp;
+    gameState.hands[gameState.playerId] = targetHand;
+    gameState.hands[targetPlayerId] = myCurrentHand;
 
-    showAlert(botPlayer.name + ' ใช้การ์ดแลกการ์ดกับ ' + target.name + '!');
-    endTurn();
+    gameState.discardPile.push(card);
+    gameState.currentColor = card.color !== 'WILD' ? card.color : gameState.currentColor;
+
+    checkWinOrAdvance(card);
 }
 
-function giveCardsToPlayer(playerIndex, count) {
-    const targetPlayer = gameState.players[playerIndex];
-    for (let i = 0; i < count; i++) {
-        if (gameState.deck.length === 0) {
-            const top = gameState.discardPile.pop();
-            gameState.deck = gameState.discardPile;
-            gameState.discardPile = [top];
+async function executeCardPlay(card, chosenColor) {
+    let myHand = gameState.hands[gameState.playerId] || [];
+    myHand = myHand.filter(c => c.id !== card.id);
+    gameState.hands[gameState.playerId] = myHand;
+
+    gameState.discardPile.push(card);
+    gameState.currentColor = chosenColor;
+
+    if (card.value === 'SKIP') {
+        advanceTurn();
+    } else if (card.value === 'REVERSE' || card.value === 'COMPASS') {
+        gameState.direction *= -1;
+    } else if (card.value === 'DRAW2') {
+        advanceTurn();
+        let nextPlayer = gameState.players[gameState.currentTurnIndex];
+        for(let i=0; i<2; i++) {
+            if(gameState.drawPile.length > 0) gameState.hands[nextPlayer.id].push(gameState.drawPile.pop());
         }
-        targetPlayer.hand.push(gameState.deck.pop());
+    } else if (card.value === 'WILD_DRAW4') {
+        advanceTurn();
+        let nextPlayer = gameState.players[gameState.currentTurnIndex];
+        for(let i=0; i<4; i++) {
+            if(gameState.drawPile.length > 0) gameState.hands[nextPlayer.id].push(gameState.drawPile.pop());
+        }
     }
+
+    checkWinOrAdvance(card);
 }
 
-function getNextPlayerIndex(step) {
-    let next = (gameState.turnIndex + step) % gameState.players.length;
-    if (next < 0) next += gameState.players.length;
-    return next;
-}
-
-function advanceTurnCustom(step) {
-    gameState.turnIndex = getNextPlayerIndex(step);
-    updateGameUI();
-    checkBotTurn();
-}
-
-function endTurn() {
-    gameState.turnIndex = getNextPlayerIndex(gameState.direction);
-    updateGameUI();
-    checkBotTurn();
-}
-
-function sayUno() {
-    const me = gameState.players.find(p => p.id === gameState.myPlayerId);
-    if (me.hand.length <= 2) {
-        gameState.saidUnoPlayers[me.id] = true;
-        showAlert('คุณประกาศ "อูโน่!" เรียบร้อยแล้ว');
+async function checkWinOrAdvance(card) {
+    if (gameState.hands[gameState.playerId].length === 0) {
+        gameState.winner = gameState.playerName;
     } else {
-        showAlert('คุณยังมีการ์ดเยอะเกินกว่าจะประกาศอูโน่');
+        advanceTurn();
     }
+    await syncGameState();
 }
 
-function checkBotTurn() {
-    if (!gameState.gameActive) return;
-    const currentTurnPlayer = gameState.players[gameState.turnIndex];
-
-    if (currentTurnPlayer.isBot) {
-        setTimeout(() => {
-            if (!gameState.gameActive) return;
-            executeBotPlay(currentTurnPlayer);
-        }, 1000 + Math.random() * 800);
-    }
+function advanceTurn() {
+    let numPlayers = gameState.players.length;
+    gameState.currentTurnIndex = (gameState.currentTurnIndex + gameState.direction + numPlayers) % numPlayers;
 }
 
-function executeBotPlay(bot) {
-    const topCard = gameState.discardPile[gameState.discardPile.length - 1];
-    const playableIndex = bot.hand.findIndex(card => isValidPlay(card, topCard, gameState.activeColor));
+window.shoutUno = function() {
+    showModal(`${gameState.playerName} ตะโกน UNO! เสียงดังฟังชัด!`, "UNO!");
+};
 
-    if (playableIndex !== -1) {
-        const card = bot.hand.splice(playableIndex, 1)[0];
-        gameState.discardPile.push(card);
+async function runBotTurn() {
+    if (gameState.winner) return;
+    let bot = gameState.players[gameState.currentTurnIndex];
+    if (!bot || !bot.isBot) return;
 
-        if (bot.hand.length === 0) {
-            triggerGameOver(bot);
-            return;
+    let hand = gameState.hands[bot.id] || [];
+    let topCard = gameState.discardPile[gameState.discardPile.length - 1];
+
+    let playableCard = hand.find(c => c.color === 'WILD' || c.color === gameState.currentColor || c.value === topCard.value);
+
+    if (playableCard) {
+        gameState.hands[bot.id] = hand.filter(c => c.id !== playableCard.id);
+        gameState.discardPile.push(playableCard);
+        
+        /*************************************************
+         * Generated files:
+         * - index.html [file-tag: code-generated-file-68c1af80-fea0-405d-aca9-9fc079a183e4]
+         * - style.css [file-tag: code-generated-file-147f77a6-5374-4728-b2ac-1427d1877656]
+         * - script.js [file-tag: code-generated-file-bb7873be-d57a-4ca9-bfc1-6dc34a88d847]
+         *************************************************/
+        if (playableCard.color === 'WILD') {
+            gameState.currentColor = COLORS[Math.floor(Math.random() * COLORS.length)];
+        } else {
+            gameState.currentColor = playableCard.color;
         }
 
-        if (card.color === 'wild' || card.type === 'wild' || card.type === 'special') {
-            const randColor = COLORS[Math.floor(Math.random() * COLORS.length)];
-            gameState.activeColor = randColor;
-            showAlert('บอท ' + bot.name + ' เปลี่ยนสีเป็น ' + COLOR_NAMES_TH[randColor]);
-            
-            if (card.action === 'trade') {
-                executeBotTrade(bot);
-                return;
-            } else if (card.action === 'spin') {
-                gameState.direction *= -1;
-                endTurn();
-                return;
-            } else if (card.action === 'wild4') {
-                const targetIdx = getNextPlayerIndex(gameState.direction);
-                giveCardsToPlayer(targetIdx, 4);
-                advanceTurnCustom(gameState.direction * 2);
-                return;
-            }
+        if (playableCard.value === 'SKIP' || playableCard.value === 'DRAW2' || playableCard.value === 'WILD_DRAW4') {
+            advanceTurn();
+        } else if (playableCard.value === 'REVERSE' || playableCard.value === 'COMPASS') {
+            gameState.direction *= -1;
         }
 
-        if (card.type === 'action') {
-            gameState.activeColor = card.color;
-            if (card.action === 'skip') {
-                advanceTurnCustom(gameState.direction * 2);
-                return;
-            } else if (card.action === 'reverse') {
-                gameState.direction *= -1;
-                endTurn();
-                return;
-            } else if (card.action === 'draw2') {
-                const targetIdx = getNextPlayerIndex(gameState.direction);
-                giveCardsToPlayer(targetIdx, 2);
-                advanceTurnCustom(gameState.direction * 2);
-                return;
-            }
+        if (gameState.hands[bot.id].length === 0) {
+            gameState.winner = bot.name;
+        } else {
+            advanceTurn();
         }
-
-        gameState.activeColor = card.color;
-        gameState.activeValue = card.value;
-        endTurn();
     } else {
-        if (gameState.deck.length === 0) {
-            const top = gameState.discardPile.pop();
-            gameState.deck = gameState.discardPile;
-            gameState.discardPile = [top];
+        if (gameState.drawPile.length > 0) {
+            let drawn = gameState.drawPile.pop();
+            gameState.hands[bot.id].push(drawn);
         }
-        const drawn = gameState.deck.pop();
-        bot.hand.push(drawn);
-        showAlert('บอท ' + bot.name + ' จั่วการ์ด 1 ใบ');
-
-        if (isValidPlay(drawn, topCard, gameState.activeColor)) {
-            bot.hand.pop();
-            gameState.discardPile.push(drawn);
-            gameState.activeColor = drawn.color;
-            if (bot.hand.length === 0) {
-                triggerGameOver(bot);
-                return;
-            }
-        }
-        endTurn();
+        advanceTurn();
     }
+
+    await syncGameState();
 }
 
-function triggerGameOver(winner) {
-    gameState.gameActive = false;
-    document.getElementById('winner-title').textContent = 'ผู้ชนะคือ ' + winner.name + '! 🎉';
-    document.getElementById('winner-subtitle').textContent = winner.isBot ? 'บอท AI คว้าชัยชนะไปได้ในรอบนี้' : 'ยอดเยี่ยมมาก คุณคือแชมป์ UNO ขาวดำ!';
-    document.getElementById('modal-game-over').classList.remove('hidden');
-}
-
-function returnToRoom() {
-    closeModals();
-    switchScreen('screen-room');
-    updateRoomUI();
+async function syncGameState() {
+    if (db && gameState.roomCode) {
+        const roomsColRef = collection(db, 'artifacts', appId, 'public_rooms');
+        const roomRef = doc(roomsColRef, 'uno_rooms_' + gameState.roomCode);
+        await updateDoc(roomRef, {
+            hands: gameState.hands,
+            drawPile: gameState.drawPile,
+            discardPile: gameState.discardPile,
+            currentTurnIndex: gameState.currentTurnIndex,
+            direction: gameState.direction,
+            currentColor: gameState.currentColor,
+            winner: gameState.winner
+        });
+    }
+    renderGame();
 }
