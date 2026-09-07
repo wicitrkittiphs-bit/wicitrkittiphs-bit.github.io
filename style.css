@@ -1,0 +1,34 @@
+/* Custom Styles for Cards */
+.uno-card {
+    transition: transform 0.2s;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+    border-radius: 0.5rem;
+    border: 4px solid white;
+    user-select: none;
+}
+.uno-card:hover {
+    transform: translateY(-10px);
+}
+.card-red { background-color: #ef4444; color: white; }
+.card-blue { background-color: #3b82f6; color: white; }
+.card-green { background-color: #10b981; color: white; }
+.card-yellow { background-color: #f59e0b; color: white; }
+.card-black { background-color: #1f2937; color: white; } /* Wild/Action */
+
+.card-inner-ellipse {
+    background-color: white;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transform: skew(-15deg);
+    box-shadow: inset 0 0 5px rgba(0,0,0,0.3);
+}
+.card-text {
+    transform: skew(15deg);
+    font-weight: 900;
+    text-shadow: 1px 1px 0 #000, -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000;
+}
+
+/* Disable scroll on body to make it app-like */
+body { overflow: hidden; background-color: #111827; color: #f3f4f6; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
