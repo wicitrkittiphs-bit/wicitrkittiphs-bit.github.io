@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>UNO Party Online (2-6 Players)</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Kanit:ital,wght@0,300;0,400;0,600;0,800;1,700;1,900&family=Montserrat:ital,wght@0,800;1,900&display=swap" rel="stylesheet">
+  <!-- Custom CSS -->
+  <link rel="stylesheet" href="style.css">
+</head>
+<body class="relative flex flex-col justify-between h-screen select-none">
+
+  <!-- Floating Toast Message System -->
+  <div id="toast-container" class="fixed top-4 left-1/2 -translate-x-1/2 z-50 pointer-events-none flex flex-col gap-2 items-center w-11/12 max-w-md"></div>
+
+  <!-- Header / Navigation Bar -->
+  <header class="w-full px-4 py-2 flex items-center justify-between bg-black/40 backdrop-blur-md border-b border-white/10 z-20">
+    <div class="flex items-center gap-3">
+      <div class="flex items-center gap-1">
+        <span class="text-2xl font-black italic tracking-tighter bg-gradient-to-r from-red-500 via-yellow-400 to-green-400 bg-clip-text text-transparent uno-font">UNO!</span>
+        <span class="text-xs uppercase tracking-widest px-2 py-0.5 rounded-full bg-white/10 text-emerald-300 font-bold">Party</span>
+      </div>
+      <div id="game-status-pill" class="hidden md:flex items-center gap-2 px-3 py-1 bg-white/10 rounded-full text-xs font-semibold">
+        <span class="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
+        <span id="room-status-text">กำลังเชื่อมต่อ...</span>
+      </div>
+    </div>
+
+    <!-- Room Control & Logs -->
+    <div class="flex items-center gap-2">
+      <button id="btn-show-rules" onclick="toggleModal('rules-modal', true)" class="px-2.5 py-1 text-xs bg-white/10 hover:bg-white/20 rounded-lg transition">
+        กติกาการ์ดพิเศษ 📖
+      </button>
+      <button id="btn-copy-link" onclick="copyInviteLink()" class="hidden px-2.5 py-1 text-xs bg-amber-500/20 text-amber-300 hover:bg-amber-500/30 border border-amber-500/30 rounded-lg transition font-medium">
+        📋 ชวนเพื่อน
+      </button>
+      <button id="btn-leave-room" onclick="leaveRoom()" class="hidden px-2.5 py-1 text-xs bg-rose-500/20 text-rose-300 hover:bg-rose-500/30 rounded-lg transition">
+        ออกจากห้อง
+      </button>
+    </div>
+  </header>
+
+  <!-- LOBBY SCREEN -->
+  <main id="lobby-screen" class="flex-1 flex items-center justify-center p-4 z-10">
+    <div class="bg-slate-900/85 backdrop-blur-xl border border-white/15 rounded-3xl p-6 sm:p-8 max-w-lg w-full shadow-2xl relative overflow-hidden">
+      <div class="absolute -top-16 -left-16 w-36 h-36 bg-rose-500/20 rounded-full blur-3xl pointer-events-none"></div>
+      <div class="absolute -bottom-16 -right-16 w-36 h-36 bg-amber-500/20 rounded-full blur-3xl pointer-events-none"></div>
+
+      <div class="text-center mb-6">
+        <h1 class="text-4xl sm:text-5xl font-black italic tracking-tight uno-font mb-1">
+          <span class="text-red-500">U</span><span class="text-blue-500">N</span><span class="text-green-500">O</span><span class="text-yellow-400">!</span>
+        </h1>
+        <p class="text-sm text-slate-400">เล่นออนไลน์ได้ 2 - 6 คน พร้อมการ์ดสลับมือ & สลับฝั่ง</p>
+      </div>
+
+      <!-- Player Name Input -->
+      <div class="mb-5">
+        <label class="block text-xs font-bold uppercase tracking-wider text-slate-300 mb-1.5">ชื่อผู้เล่นของคุณ</label>
+        <input id="input-username" type="text" maxlength="12" placeholder="ใส่ชื่อเล่น..." class="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-yellow-400 font-semibold transition" value="Player">
+      </div>
+
+      <!-- Tab Buttons: Create or Join -->
+      <div id="lobby-action-tabs" class="grid grid-cols-2 gap-3 mb-6">
+        <button onclick="switchLobbyTab('create')" id="tab-btn-create" class="py-2.5 px-4 rounded-xl font-bold text-sm bg-gradient-to-r from-red-600 to-amber-600 shadow-lg text-white transition transform active:scale-95">
+          👑 สร้างห้องใหม่
+        </button>
+        <button onclick="switchLobbyTab('join')" id="tab-btn-join" class="py-2.5 px-4 rounded-xl font-bold text-sm bg-white/10 hover:bg-white/15 text-slate-300 transition transform active:scale-95">
+          🚪 เข้าร่วมห้อง
+        </button>
+      </div>
+
+      <!-- Create Room Panel -->
+      <div id="panel-create" class="space-y-4">
+        <div class="bg-white/5 border border-white/10 rounded-2xl p-4 text-center">
+          <p class="text-xs text-slate-300 mb-3">สร้างห้องสำหรับเล่น 2-6 คน (เล่นคนเดียวกับบอท หรือเปิดเล่นหลายแท็บ)</p>
+          <button onclick="createRoom()" class="w-full py-3.5 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white rounded-xl font-extrabold shadow-lg shadow-emerald-900/30 transition transform active:scale-98">
+            สร้างห้องทันที
+          </button>
+        </div>
+      </div>
+
+      <!-- Join Room Panel -->
+      <div id="panel-join" class="space-y-3 hidden">
+        <div>
+          <label class="block text-xs font-bold uppercase tracking-wider text-slate-300 mb-1.5">รหัสห้อง (Room Code)</label>
+          <input id="input-room-code" type="text" placeholder="พิมพ์หรือวางรหัสห้องที่นี่..." class="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-400 font-mono font-bold uppercase transition">
+        </div>
+        <button onclick="joinRoom()" class="w-full py-3.5 bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-500 hover:to-cyan-500 text-white rounded-xl font-extrabold shadow-lg shadow-blue-900/30 transition transform active:scale-98">
+          เข้าเล่นห้องเพื่อน
+        </button>
+      </div>
+
+      <!-- In-Lobby Waiting Room -->
+      <div id="panel-room-lobby" class="hidden space-y-4 pt-2">
+        <div class="bg-black/30 border border-white/10 rounded-2xl p-4">
+          <div class="flex items-center justify-between mb-2">
+            <span class="text-xs text-slate-400 font-bold uppercase">รหัสห้อง (Room Code):</span>
+            <span id="label-player-count" class="text-xs px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 font-bold">1 / 6 คน</span>
+          </div>
+          <div class="flex items-center gap-2">
+            <div id="room-code-display" class="flex-1 font-mono text-center font-black tracking-wider text-lg sm:text-xl py-2 px-3 bg-white/5 rounded-xl border border-white/10 text-yellow-300 select-all overflow-x-auto">
+              ---
+            </div>
+            <button onclick="copyInviteLink()" class="px-3 py-2.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs rounded-xl transition flex items-center gap-1 shadow-md">
+              คัดลอกรหัส
+            </button>
+            <button onclick="openPlayerTab()" class="px-3 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs rounded-xl transition flex items-center gap-1 shadow-md" title="เปิดหน้าต่างเพื่อนในแท็บใหม่">
+              + เปิดแท็บเพื่อน
+            </button>
+          </div>
+        </div>
+
+        <!-- Player Slots (2 - 6 Players) -->
+        <div>
+          <div class="flex items-center justify-between mb-2">
+            <span class="text-xs font-bold text-slate-300 uppercase">รายชื่อผู้เล่นในห้อง</span>
+            <div id="host-add-bot-controls" class="hidden flex gap-2">
+              <button onclick="addBotPlayer()" class="text-xs bg-teal-500/20 hover:bg-teal-500/30 text-teal-300 px-2 py-1 rounded-lg border border-teal-500/30 font-semibold transition">
+                + เพิ่มบอท AI
+              </button>
+            </div>
+          </div>
+          <div id="lobby-player-list" class="grid grid-cols-2 gap-2"></div>
+        </div>
+
+        <!-- Start Button for Host -->
+        <div id="host-start-container" class="hidden pt-2">
+          <button id="btn-start-game" onclick="requestStartGame()" class="w-full py-3.5 bg-gradient-to-r from-amber-500 to-rose-600 hover:from-amber-400 hover:to-rose-500 text-slate-950 font-black text-lg rounded-xl shadow-xl transition transform active:scale-98">
+            🚀 เริ่มเกมเลย! (ขั้นต่ำ 2 คน)
+          </button>
+          <p class="text-center text-[11px] text-slate-400 mt-2">* รองรับ 2 - 6 คน สามารถกดปุ่ม "+ เพิ่มบอท AI" เพื่อเริ่มเล่นได้ทันที</p>
+        </div>
+        <div id="client-waiting-message" class="hidden text-center py-2 text-sm text-yellow-300/80 animate-pulse font-medium">
+          ⏳ รอหัวหน้าห้องกดเริ่มเกม...
+        </div>
+      </div>
+
+    </div>
+  </main>
+
+  <!-- ACTIVE GAME SCREEN -->
+  <main id="game-screen" class="hidden flex-1 flex-col justify-between relative overflow-hidden p-2 sm:p-4">
+    
+    <!-- Top Area: Opponents -->
+    <section class="w-full max-w-5xl mx-auto z-10">
+      <div id="opponents-container" class="flex items-center justify-center gap-2 sm:gap-4 flex-wrap py-1"></div>
+    </section>
+
+    <!-- Center Arena -->
+    <section class="flex-1 flex flex-col items-center justify-center relative my-2 z-10">
+      <!-- Direction Indicator -->
+      <div id="direction-indicator-badge" class="mb-3 px-4 py-1.5 rounded-full bg-black/60 backdrop-blur-md border border-white/20 text-xs sm:text-sm font-bold flex items-center gap-2 shadow-lg transition-all duration-300">
+        <span id="direction-icon" class="text-base text-yellow-400 transition-transform duration-500">↻</span>
+        <span id="direction-text">ทิศทาง: ตามเข็มนาฬิกา</span>
+      </div>
+
+      <!-- Play Arena -->
+      <div class="flex items-center justify-center gap-5 sm:gap-10">
+        <!-- Draw Pile -->
+        <div class="relative group cursor-pointer" onclick="onPlayerDrawClick()">
+          <div class="absolute -top-1 -left-1 w-full h-full uno-card card-back opacity-50 pointer-events-none"></div>
+          <div class="absolute -top-2 -left-2 w-full h-full uno-card card-back opacity-70 pointer-events-none"></div>
+          <div class="uno-card card-back transform transition group-hover:-translate-y-1">
+            <div class="card-body">
+              <div class="card-oval">
+                <span class="logo-text uno-font">UNO</span>
+              </div>
+            </div>
+          </div>
+          <div class="absolute -bottom-6 left-1/2 -translate-x-1/2 bg-black/70 px-2 py-0.5 rounded-md text-[10px] font-bold tracking-wider text-slate-300 uppercase whitespace-nowrap">
+            จั่วการ์ด
+          </div>
+        </div>
+
+        <!-- Discard Pile -->
+        <div class="relative">
+          <div id="table-discard-pile"></div>
+          <div id="active-color-indicator" class="absolute -top-2.5 -right-2.5 w-6 h-6 rounded-full border-2 border-white shadow-lg transition-colors duration-300"></div>
+        </div>
+      </div>
+
+      <!-- Center Table Notice -->
+      <div id="center-turn-alert" class="mt-7 text-center">
+        <h2 id="turn-announcement" class="text-base sm:text-lg font-extrabold text-amber-300 drop-shadow-md">
+          ตาของผู้เล่น...
+        </h2>
+        <p id="turn-sub-announcement" class="text-xs text-slate-300">วางการ์ดสีเดียวกัน ตัวเลขเดียวกัน หรือการ์ดพิเศษ</p>
+      </div>
+    </section>
+
+    <!-- Bottom Area: Player's Own Hand -->
+    <section class="w-full max-w-5xl mx-auto z-20 flex flex-col items-center">
+      <div class="w-full flex items-center justify-between px-3 mb-1.5">
+        <div class="flex items-center gap-2">
+          <span class="text-xs font-bold text-slate-300 drop-shadow">การ์ดในมือคุณ:</span>
+          <span id="my-card-count-badge" class="px-2 py-0.5 bg-yellow-400 text-slate-950 text-xs font-black rounded-full">0</span>
+        </div>
+
+        <div class="flex items-center gap-2">
+          <button id="btn-pass-turn" onclick="onPlayerPassTurn()" class="hidden px-3 py-1 bg-slate-700 hover:bg-slate-600 text-white rounded-lg text-xs font-bold shadow-md transition">
+            ผ่านตา (Pass) ↷
+          </button>
+          <button id="btn-uno-shout" onclick="shoutUno()" class="px-4 py-1.5 bg-gradient-to-r from-red-600 to-amber-500 hover:from-red-500 hover:to-amber-400 text-white font-black text-xs sm:text-sm rounded-full shadow-lg border border-yellow-300/40 tracking-wider transform transition active:scale-95 uno-font">
+            กดอูโน่! (UNO) ⚡
+          </button>
+        </div>
+      </div>
+
+      <div class="w-full bg-black/40 backdrop-blur-md rounded-2xl p-2 sm:p-3 border border-white/10 shadow-2xl">
+        <div id="my-hand-cards" class="hand-scroll flex items-end justify-start sm:justify-center gap-1.5 sm:gap-2 overflow-x-auto min-h-[140px] sm:min-h-[160px] px-2 py-2"></div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- MODAL: Wild Color Selector -->
+  <div id="color-picker-modal" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+    <div class="bg-slate-900 border border-white/20 rounded-3xl p-6 max-w-xs w-full text-center shadow-2xl animate-in fade-in duration-200">
+      <h3 class="text-lg font-black text-white mb-2">เลือกสีต่อไป 🎨</h3>
+      <p class="text-xs text-slate-400 mb-5">เลือกสีที่ต้องการให้ผู้เล่นคนถัดไปเล่น</p>
+      
+      <div class="grid grid-cols-2 gap-3">
+        <button onclick="confirmColorPick('red')" class="h-16 rounded-2xl bg-gradient-to-br from-red-500 to-red-700 hover:brightness-110 font-bold text-white shadow-lg transition transform active:scale-95 flex items-center justify-center gap-2">
+          <span class="w-4 h-4 rounded-full bg-white"></span> สีแดง
+        </button>
+        <button onclick="confirmColorPick('blue')" class="h-16 rounded-2xl bg-gradient-to-br from-blue-500 to-blue-700 hover:brightness-110 font-bold text-white shadow-lg transition transform active:scale-95 flex items-center justify-center gap-2">
+          <span class="w-4 h-4 rounded-full bg-white"></span> สีน้ำเงิน
+        </button>
+        <button onclick="confirmColorPick('green')" class="h-16 rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-700 hover:brightness-110 font-bold text-white shadow-lg transition transform active:scale-95 flex items-center justify-center gap-2">
+          <span class="w-4 h-4 rounded-full bg-white"></span> สีเขียว
+        </button>
+        <button onclick="confirmColorPick('yellow')" class="h-16 rounded-2xl bg-gradient-to-br from-amber-400 to-yellow-600 hover:brightness-110 font-bold text-slate-950 shadow-lg transition transform active:scale-95 flex items-center justify-center gap-2">
+          <span class="w-4 h-4 rounded-full bg-slate-950"></span> สีเหลือง
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: Swap Hands Target -->
+  <div id="swap-hands-modal" class="fixed inset-0 bg-black/85 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+    <div class="bg-slate-900 border border-amber-400/40 rounded-3xl p-6 max-w-sm w-full text-center shadow-2xl animate-in zoom-in duration-200">
+      <div class="w-12 h-12 rounded-full bg-amber-500/20 border border-amber-400 flex items-center justify-center mx-auto mb-3 text-2xl">
+        🤝
+      </div>
+      <h3 class="text-xl font-black text-amber-300 mb-1">การ์ดสลับมือ (Swap Hands)!</h3>
+      <p class="text-xs text-slate-300 mb-4">เลือกผู้เล่นที่คุณต้องการแลกเปลี่ยนการ์ดในมือทั้งหมดด้วย</p>
+      
+      <div id="swap-target-list" class="space-y-2 max-h-60 overflow-y-auto pr-1"></div>
+    </div>
+  </div>
+
+  <!-- MODAL: Rules -->
+  <div id="rules-modal" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+    <div class="bg-slate-900 border border-white/20 rounded-3xl p-6 max-w-md w-full text-left shadow-2xl relative">
+      <button onclick="toggleModal('rules-modal', false)" class="absolute top-4 right-4 text-slate-400 hover:text-white text-lg font-bold">✕</button>
+      <h3 class="text-lg font-black text-yellow-400 mb-3 flex items-center gap-2">📖 กติกา & ความหมายการ์ดพิเศษ</h3>
+      
+      <div class="space-y-3 text-xs text-slate-300 leading-relaxed max-h-80 overflow-y-auto pr-2">
+        <div class="p-2.5 rounded-xl bg-white/5 border border-white/10 flex items-center gap-3">
+          <span class="text-xl font-black text-amber-400">⇄</span>
+          <div>
+            <b class="text-white">Reverse (สลับฝั่ง):</b> สลับทิศทางการวนรอบ จากตามเข็มเป็นทวนเข็มนาฬิกา (หากเล่น 2 คน จะทำหน้าที่เหมือนข้ามตา Skip)
+          </div>
+        </div>
+        <div class="p-2.5 rounded-xl bg-white/5 border border-white/10 flex items-center gap-3">
+          <span class="text-xl font-black text-cyan-400">⊘</span>
+          <div>
+            <b class="text-white">Skip (ข้ามตา):</b> ผู้เล่นคนถัดไปจะถูกข้ามตาเล่นทันที
+          </div>
+        </div>
+        <div class="p-2.5 rounded-xl bg-white/5 border border-white/10 flex items-center gap-3">
+          <span class="text-xl font-black text-rose-400">+2</span>
+          <div>
+            <b class="text-white">Draw Two (+2):</b> ผู้เล่นคนถัดไปต้องจั่ว 2 ใบ และเสียตาเล่น
+          </div>
+        </div>
+        <div class="p-2.5 rounded-xl bg-white/5 border border-white/10 flex items-center gap-3">
+          <span class="text-xl font-black text-amber-300">🤝</span>
+          <div>
+            <b class="text-white">Swap Hands (สลับการ์ด):</b> การ์ดพิเศษไฮไลต์! เมื่อลงใบนี้ คุณสามารถเลือกผู้เล่นคนใดก็ได้ 1 คนเพื่อสลับการ์ดในมือของคุณทั้งหมดกับเขา พร้อมเลือกสีต่อไป!
+          </div>
+        </div>
+        <div class="p-2.5 rounded-xl bg-white/5 border border-white/10 flex items-center gap-3">
+          <span class="text-xl font-black text-emerald-400">★ / +4</span>
+          <div>
+            <b class="text-white">Wild & Wild Draw 4:</b> เปลี่ยนสีที่ต้องการเล่นต่อ สำหรับ +4 คนถัดไปจะโดนจั่ว 4 ใบ
+          </div>
+        </div>
+        <div class="p-2.5 rounded-xl bg-white/5 border border-white/10">
+          <b class="text-yellow-300">⚡ กฎการพูด UNO:</b> เมื่อการ์ดในมือเหลือ 1 ใบ ให้กดปุ่ม "กดอูโน่! (UNO)" ก่อนวางการ์ดหรือขณะวางการ์ด
+        </div>
+      </div>
+
+      <div class="mt-4 pt-3 border-t border-white/10 text-right">
+        <button onclick="toggleModal('rules-modal', false)" class="px-4 py-2 bg-white/10 hover:bg-white/20 text-white rounded-xl text-xs font-bold transition">
+          เข้าใจแล้ว
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: Winner Podium -->
+  <div id="winner-modal" class="fixed inset-0 bg-black/90 backdrop-blur-md z-50 hidden flex items-center justify-center p-4">
+    <div class="bg-gradient-to-b from-slate-900 to-slate-950 border border-yellow-400/50 rounded-3xl p-8 max-w-sm w-full text-center shadow-2xl relative animate-in zoom-in">
+      <div class="text-5xl mb-3">🏆</div>
+      <h3 class="text-2xl font-black text-yellow-300 uno-font uppercase mb-1">ยินดีด้วย!</h3>
+      <p id="winner-name-text" class="text-lg font-bold text-white mb-2">ผู้เล่น XXX เป็นผู้ชนะ!</p>
+      <p class="text-xs text-slate-400 mb-6">ทิ้งการ์ดหมดมือเป็นคนแรกในปาร์ตี้อูโน่</p>
+      
+      <div id="winner-action-buttons" class="space-y-2">
+        <button id="btn-play-again" onclick="requestPlayAgain()" class="w-full py-3 bg-gradient-to-r from-amber-400 to-yellow-500 text-slate-950 font-black rounded-xl text-sm transition transform active:scale-95 shadow-lg">
+          🔄 เล่นรอบใหม่ (Play Again)
+        </button>
+        <button onclick="leaveRoom()" class="w-full py-2.5 bg-white/10 hover:bg-white/20 text-slate-300 font-bold rounded-xl text-xs transition">
+          กลับหน้าหลัก
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Main Game Logic Script -->
+  <script src="app.js"></script>
+</body>
+</html>
