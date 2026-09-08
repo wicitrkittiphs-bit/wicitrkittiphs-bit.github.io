@@ -185,6 +185,7 @@ body {
   box-shadow: 0 0 0 3px #FFDE00, 0 0 20px #FFDE00;
   animation: turn-pulse 1.4s infinite alternate;
 }
+
 @keyframes turn-pulse {
   0% { transform: scale(1); box-shadow: 0 0 0 3px #FFDE00, 0 0 12px #FFDE00; }
   100% { transform: scale(1.04); box-shadow: 0 0 0 4px #FFF, 0 0 24px #FFDE00; }
