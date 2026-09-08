@@ -37,7 +37,7 @@
         กติกาการ์ดพิเศษ 📖
       </button>
       <button id="btn-copy-link" onclick="copyInviteLink()" class="hidden px-2.5 py-1 text-xs bg-amber-500/20 text-amber-300 hover:bg-amber-500/30 border border-amber-500/30 rounded-lg transition font-medium">
-        📋 ชวนเพื่อน
+        🔗 คัดลอกลิงก์ชวนเพื่อน
       </button>
       <button id="btn-leave-room" onclick="leaveRoom()" class="hidden px-2.5 py-1 text-xs bg-rose-500/20 text-rose-300 hover:bg-rose-500/30 rounded-lg transition">
         ออกจากห้อง
@@ -64,22 +64,30 @@
         <input id="input-username" type="text" maxlength="12" placeholder="ใส่ชื่อเล่น..." class="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-yellow-400 font-semibold transition" value="Player">
       </div>
 
+      <!-- URL Invite Detected Notification Banner -->
+      <div id="invite-detected-banner" class="hidden mb-4 p-3 rounded-2xl bg-amber-500/20 border border-amber-400/40 text-left animate-in fade-in">
+        <div class="flex items-center gap-2 text-amber-300 font-bold text-xs mb-1">
+          <span>🔗 ได้รับลิงก์เชิญเข้าห้อง!</span>
+        </div>
+        <p class="text-[11px] text-slate-300">ใส่ชื่อของคุณด้านบนแล้วกดปุ่ม "เข้าร่วมห้องผ่านลิงก์" ด้านล่างได้ทันที</p>
+      </div>
+
       <!-- Tab Buttons: Create or Join -->
       <div id="lobby-action-tabs" class="grid grid-cols-2 gap-3 mb-6">
         <button onclick="switchLobbyTab('create')" id="tab-btn-create" class="py-2.5 px-4 rounded-xl font-bold text-sm bg-gradient-to-r from-red-600 to-amber-600 shadow-lg text-white transition transform active:scale-95">
           👑 สร้างห้องใหม่
         </button>
         <button onclick="switchLobbyTab('join')" id="tab-btn-join" class="py-2.5 px-4 rounded-xl font-bold text-sm bg-white/10 hover:bg-white/15 text-slate-300 transition transform active:scale-95">
-          🚪 เข้าร่วมห้อง
+          🔗 เข้าร่วมด้วยลิงก์
         </button>
       </div>
 
       <!-- Create Room Panel -->
       <div id="panel-create" class="space-y-4">
         <div class="bg-white/5 border border-white/10 rounded-2xl p-4 text-center">
-          <p class="text-xs text-slate-300 mb-3">สร้างห้องสำหรับเล่น 2-6 คน (เล่นคนเดียวกับบอท หรือเปิดเล่นหลายแท็บ)</p>
+          <p class="text-xs text-slate-300 mb-3">สร้างห้องสำหรับเล่น 2-6 คน จะได้ลิงก์เชิญสำหรับส่งให้เพื่อนกดเข้าได้ทันที</p>
           <button onclick="createRoom()" class="w-full py-3.5 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white rounded-xl font-extrabold shadow-lg shadow-emerald-900/30 transition transform active:scale-98">
-            สร้างห้องทันที
+            สร้างห้องและรับลิงก์เชิญ
           </button>
         </div>
       </div>
@@ -87,11 +95,11 @@
       <!-- Join Room Panel -->
       <div id="panel-join" class="space-y-3 hidden">
         <div>
-          <label class="block text-xs font-bold uppercase tracking-wider text-slate-300 mb-1.5">รหัสห้อง (Room Code)</label>
-          <input id="input-room-code" type="text" placeholder="พิมพ์หรือวางรหัสห้องที่นี่..." class="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-400 font-mono font-bold uppercase transition">
+          <label class="block text-xs font-bold uppercase tracking-wider text-slate-300 mb-1.5">ลิงก์เชิญ หรือ รหัสห้อง (Invite Link)</label>
+          <input id="input-room-code" type="text" placeholder="วางลิงก์เชิญของเพื่อน เช่น https://...?room=..." class="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-400 font-mono text-xs sm:text-sm font-semibold transition">
         </div>
-        <button onclick="joinRoom()" class="w-full py-3.5 bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-500 hover:to-cyan-500 text-white rounded-xl font-extrabold shadow-lg shadow-blue-900/30 transition transform active:scale-98">
-          เข้าเล่นห้องเพื่อน
+        <button onclick="joinRoom()" class="w-full py-3.5 bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-500 hover:to-cyan-500 text-white rounded-xl font-extrabold shadow-lg shadow-blue-900/30 transition transform active:scale-98 flex items-center justify-center gap-2">
+          <span>🔗 เข้าร่วมห้องผ่านลิงก์</span>
         </button>
       </div>
 
@@ -99,23 +107,34 @@
       <div id="panel-room-lobby" class="hidden space-y-4 pt-2">
         <div class="bg-black/30 border border-white/10 rounded-2xl p-4">
           <div class="flex items-center justify-between mb-2">
-            <span class="text-xs text-slate-400 font-bold uppercase">รหัสห้อง (Room Code):</span>
+            <span class="text-xs text-slate-400 font-bold uppercase">ลิงก์เชิญเพื่อน (Invite Link):</span>
             <span id="label-player-count" class="text-xs px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 font-bold">1 / 6 คน</span>
           </div>
-          <div class="flex items-center gap-2">
-            <div id="room-code-display" class="flex-1 font-mono text-center font-black tracking-wider text-lg sm:text-xl py-2 px-3 bg-white/5 rounded-xl border border-white/10 text-yellow-300 select-all overflow-x-auto">
+          <div class="flex flex-col gap-2">
+            <div id="room-link-display" class="font-mono text-xs py-2 px-3 bg-white/5 rounded-xl border border-white/10 text-yellow-300 select-all overflow-x-auto whitespace-nowrap text-left">
               ---
             </div>
-            <button onclick="copyInviteLink()" class="px-3 py-2.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs rounded-xl transition flex items-center gap-1 shadow-md">
-              คัดลอกรหัส
-            </button>
-            <button onclick="openPlayerTab()" class="px-3 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs rounded-xl transition flex items-center gap-1 shadow-md" title="เปิดหน้าต่างเพื่อนในแท็บใหม่">
-              + เปิดแท็บเพื่อน
-            </button>
+            <div class="flex items-center gap-2">
+              <button onclick="copyInviteLink()" class="flex-1 py-2.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs rounded-xl transition flex items-center justify-center gap-1.5 shadow-md">
+                <span>📋 คัดลอกลิงก์เชิญเพื่อน</span>
+              </button>
+              <button onclick="openPlayerTab()" class="px-3 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs rounded-xl transition flex items-center gap-1 shadow-md" title="เปิดหน้าต่างเพื่อนในแท็บใหม่เพื่อทดสอบ">
+                + เปิดแท็บเพื่อน
+              </button>
+            </div>
           </div>
         </div>
 
-        <!-- Player Slots (2 - 6 Players) -->
+        <div class="flex items-center justify-between px-3 py-2 bg-white/5 rounded-xl border border-white/10 text-xs">
+          <div class="flex items-center gap-2 text-slate-300">
+            <span>👤 ชื่อของคุณ:</span>
+            <span id="display-my-player-name" class="font-bold text-amber-300">Player</span>
+          </div>
+          <button onclick="quickRenamePlayer()" class="text-xs text-cyan-400 hover:text-cyan-300 underline font-semibold">
+            เปลี่ยนชื่อ ✏️
+          </button>
+        </div>
+
         <div>
           <div class="flex items-center justify-between mb-2">
             <span class="text-xs font-bold text-slate-300 uppercase">รายชื่อผู้เล่นในห้อง</span>
@@ -128,7 +147,6 @@
           <div id="lobby-player-list" class="grid grid-cols-2 gap-2"></div>
         </div>
 
-        <!-- Start Button for Host -->
         <div id="host-start-container" class="hidden pt-2">
           <button id="btn-start-game" onclick="requestStartGame()" class="w-full py-3.5 bg-gradient-to-r from-amber-500 to-rose-600 hover:from-amber-400 hover:to-rose-500 text-slate-950 font-black text-lg rounded-xl shadow-xl transition transform active:scale-98">
             🚀 เริ่มเกมเลย! (ขั้นต่ำ 2 คน)
@@ -153,13 +171,12 @@
 
     <!-- Center Arena -->
     <section class="flex-1 flex flex-col items-center justify-center relative my-2 z-10">
-      <!-- Direction Indicator -->
+      
       <div id="direction-indicator-badge" class="mb-3 px-4 py-1.5 rounded-full bg-black/60 backdrop-blur-md border border-white/20 text-xs sm:text-sm font-bold flex items-center gap-2 shadow-lg transition-all duration-300">
         <span id="direction-icon" class="text-base text-yellow-400 transition-transform duration-500">↻</span>
         <span id="direction-text">ทิศทาง: ตามเข็มนาฬิกา</span>
       </div>
 
-      <!-- Play Arena -->
       <div class="flex items-center justify-center gap-5 sm:gap-10">
         <!-- Draw Pile -->
         <div class="relative group cursor-pointer" onclick="onPlayerDrawClick()">
@@ -184,16 +201,17 @@
         </div>
       </div>
 
-      <!-- Center Table Notice -->
+      <!-- Turn Notice -->
       <div id="center-turn-alert" class="mt-7 text-center">
         <h2 id="turn-announcement" class="text-base sm:text-lg font-extrabold text-amber-300 drop-shadow-md">
           ตาของผู้เล่น...
         </h2>
         <p id="turn-sub-announcement" class="text-xs text-slate-300">วางการ์ดสีเดียวกัน ตัวเลขเดียวกัน หรือการ์ดพิเศษ</p>
       </div>
+
     </section>
 
-    <!-- Bottom Area: Player's Own Hand -->
+    <!-- Bottom Area: Player Hand -->
     <section class="w-full max-w-5xl mx-auto z-20 flex flex-col items-center">
       <div class="w-full flex items-center justify-between px-3 mb-1.5">
         <div class="flex items-center gap-2">
@@ -241,12 +259,10 @@
     </div>
   </div>
 
-  <!-- MODAL: Swap Hands Target -->
+  <!-- MODAL: Swap Hands Target Player Selector -->
   <div id="swap-hands-modal" class="fixed inset-0 bg-black/85 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
     <div class="bg-slate-900 border border-amber-400/40 rounded-3xl p-6 max-w-sm w-full text-center shadow-2xl animate-in zoom-in duration-200">
-      <div class="w-12 h-12 rounded-full bg-amber-500/20 border border-amber-400 flex items-center justify-center mx-auto mb-3 text-2xl">
-        🤝
-      </div>
+      <div class="w-12 h-12 rounded-full bg-amber-500/20 border border-amber-400 flex items-center justify-center mx-auto mb-3 text-2xl">🤝</div>
       <h3 class="text-xl font-black text-amber-300 mb-1">การ์ดสลับมือ (Swap Hands)!</h3>
       <p class="text-xs text-slate-300 mb-4">เลือกผู้เล่นที่คุณต้องการแลกเปลี่ยนการ์ดในมือทั้งหมดด้วย</p>
       
@@ -263,33 +279,23 @@
       <div class="space-y-3 text-xs text-slate-300 leading-relaxed max-h-80 overflow-y-auto pr-2">
         <div class="p-2.5 rounded-xl bg-white/5 border border-white/10 flex items-center gap-3">
           <span class="text-xl font-black text-amber-400">⇄</span>
-          <div>
-            <b class="text-white">Reverse (สลับฝั่ง):</b> สลับทิศทางการวนรอบ จากตามเข็มเป็นทวนเข็มนาฬิกา (หากเล่น 2 คน จะทำหน้าที่เหมือนข้ามตา Skip)
-          </div>
+          <div><b class="text-white">Reverse (สลับฝั่ง):</b> สลับทิศทางการวนรอบ จากตามเข็มเป็นทวนเข็มนาฬิกา (หากเล่น 2 คน จะทำหน้าที่เหมือนข้ามตา Skip)</div>
         </div>
         <div class="p-2.5 rounded-xl bg-white/5 border border-white/10 flex items-center gap-3">
           <span class="text-xl font-black text-cyan-400">⊘</span>
-          <div>
-            <b class="text-white">Skip (ข้ามตา):</b> ผู้เล่นคนถัดไปจะถูกข้ามตาเล่นทันที
-          </div>
+          <div><b class="text-white">Skip (ข้ามตา):</b> ผู้เล่นคนถัดไปจะถูกข้ามตาเล่นทันที</div>
         </div>
         <div class="p-2.5 rounded-xl bg-white/5 border border-white/10 flex items-center gap-3">
           <span class="text-xl font-black text-rose-400">+2</span>
-          <div>
-            <b class="text-white">Draw Two (+2):</b> ผู้เล่นคนถัดไปต้องจั่ว 2 ใบ และเสียตาเล่น
-          </div>
+          <div><b class="text-white">Draw Two (+2):</b> ผู้เล่นคนถัดไปต้องจั่ว 2 ใบ และเสียตาเล่น</div>
         </div>
         <div class="p-2.5 rounded-xl bg-white/5 border border-white/10 flex items-center gap-3">
           <span class="text-xl font-black text-amber-300">🤝</span>
-          <div>
-            <b class="text-white">Swap Hands (สลับการ์ด):</b> การ์ดพิเศษไฮไลต์! เมื่อลงใบนี้ คุณสามารถเลือกผู้เล่นคนใดก็ได้ 1 คนเพื่อสลับการ์ดในมือของคุณทั้งหมดกับเขา พร้อมเลือกสีต่อไป!
-          </div>
+          <div><b class="text-white">Swap Hands (สลับการ์ด):</b> การ์ดพิเศษไฮไลต์! เมื่อลงใบนี้ คุณสามารถเลือกผู้เล่นคนใดก็ได้ 1 คนเพื่อสลับการ์ดในมือของคุณทั้งหมดกับเขา พร้อมเลือกสีต่อไป!</div>
         </div>
         <div class="p-2.5 rounded-xl bg-white/5 border border-white/10 flex items-center gap-3">
           <span class="text-xl font-black text-emerald-400">★ / +4</span>
-          <div>
-            <b class="text-white">Wild & Wild Draw 4:</b> เปลี่ยนสีที่ต้องการเล่นต่อ สำหรับ +4 คนถัดไปจะโดนจั่ว 4 ใบ
-          </div>
+          <div><b class="text-white">Wild & Wild Draw 4:</b> เปลี่ยนสีที่ต้องการเล่นต่อ สำหรับ +4 คนถัดไปจะโดนจั่ว 4 ใบ</div>
         </div>
         <div class="p-2.5 rounded-xl bg-white/5 border border-white/10">
           <b class="text-yellow-300">⚡ กฎการพูด UNO:</b> เมื่อการ์ดในมือเหลือ 1 ใบ ให้กดปุ่ม "กดอูโน่! (UNO)" ก่อนวางการ์ดหรือขณะวางการ์ด
@@ -304,7 +310,7 @@
     </div>
   </div>
 
-  <!-- MODAL: Winner Podium -->
+  <!-- MODAL: Game Over -->
   <div id="winner-modal" class="fixed inset-0 bg-black/90 backdrop-blur-md z-50 hidden flex items-center justify-center p-4">
     <div class="bg-gradient-to-b from-slate-900 to-slate-950 border border-yellow-400/50 rounded-3xl p-8 max-w-sm w-full text-center shadow-2xl relative animate-in zoom-in">
       <div class="text-5xl mb-3">🏆</div>
@@ -323,7 +329,7 @@
     </div>
   </div>
 
-  <!-- Main Game Logic Script -->
-  <script src="app.js"></script>
+  <!-- Main JavaScript Logic -->
+  <script src="script.js"></script>
 </body>
 </html>
