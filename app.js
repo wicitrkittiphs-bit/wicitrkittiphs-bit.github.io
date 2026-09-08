@@ -67,7 +67,7 @@ let broadcastChannel = null;
 // Authoritative Host State
 let gameState = {
   started: false,
-  players: [], // { id, name, isBot, hand: [], cardCount: 0, unoCalled: false }
+  players: [],
   deck: [],
   discardPile: [],
   topCard: null,
@@ -83,6 +83,7 @@ let localMyHand = [];
 let pendingSpecialCard = null;
 let pendingCardIndex = -1;
 let pendingTargetPlayerId = null;
+let autoJoinInterval = null;
 
 // Show Custom UI Toast Notifications
 function showToast(message, type = 'info') {
@@ -131,14 +132,13 @@ function switchLobbyTab(tab) {
   }
 }
 
-// Generates complete UNO deck
+// Generate UNO deck
 function generateUnoDeck() {
   const deck = [];
   let uid = 1;
 
   CARD_COLORS.forEach(color => {
     deck.push({ id: `c_${uid++}`, color, value: '0', symbol: '0', type: 'number' });
-    
     for (let i = 0; i < 2; i++) {
       for (let n = 1; n <= 9; n++) {
         deck.push({ id: `c_${uid++}`, color, value: n.toString(), symbol: n.toString(), type: 'number' });
@@ -166,7 +166,7 @@ function generateUnoDeck() {
   return deck;
 }
 
-// Cross-Tab Broadcast Channel
+// Network broadcast setup
 function setupChannel(roomCode) {
   if (broadcastChannel) {
     broadcastChannel.close();
@@ -211,18 +211,99 @@ function handleIncomingChannelMessage(data) {
   }
 }
 
-// Auto-check URL
+// Auto join on page load
 window.addEventListener('load', () => {
   const urlParams = new URLSearchParams(window.location.search);
   const roomParam = urlParams.get('room');
   if (roomParam) {
-    document.getElementById('input-room-code').value = roomParam;
-    switchLobbyTab('join');
-    showToast('พบรหัสห้องจาก URL! กดเข้าร่วมได้เลย', 'info');
+    autoJoinRoomFromUrl(roomParam);
   }
 });
 
-// Host: Create Room
+function autoJoinRoomFromUrl(rawRoomParam) {
+  SoundFx.init();
+  const targetRoomId = extractRoomIdFromInput(rawRoomParam);
+  if (!targetRoomId) return;
+
+  let existingName = document.getElementById('input-username').value.trim();
+  if (!existingName || existingName === 'Player') {
+    const randomNum = Math.floor(100 + Math.random() * 900);
+    existingName = 'ผู้เล่น ' + randomNum;
+    document.getElementById('input-username').value = existingName;
+  }
+  myPlayerName = existingName;
+  isHost = false;
+
+  setupChannel(targetRoomId);
+  setupLobbyUIForRoom(targetRoomId);
+  updateMyNameDisplay();
+
+  let attempts = 0;
+  const sendJoin = () => {
+    sendChannelMessage({
+      type: 'REQUEST_JOIN',
+      id: myPlayerId,
+      name: myPlayerName
+    });
+    attempts++;
+    if (attempts >= 5 && autoJoinInterval) {
+      clearInterval(autoJoinInterval);
+      autoJoinInterval = null;
+    }
+  };
+
+  sendJoin();
+  autoJoinInterval = setInterval(sendJoin, 1200);
+
+  showToast(`⚡ เชื่อมต่อเข้าห้อง ${targetRoomId} อัตโนมัติแล้ว!`, 'success');
+}
+
+function quickRenamePlayer() {
+  const newName = prompt('ใส่ชื่อเล่นใหม่ของคุณ:', myPlayerName);
+  if (newName && newName.trim()) {
+    myPlayerName = newName.trim();
+    document.getElementById('input-username').value = myPlayerName;
+    updateMyNameDisplay();
+    
+    if (isHost) {
+      const me = gameState.players.find(p => p.id === myPlayerId);
+      if (me) me.name = myPlayerName;
+      updateLobbyPlayerSlots();
+      broadcastGameState();
+    } else {
+      sendChannelMessage({
+        type: 'REQUEST_RENAME',
+        playerId: myPlayerId,
+        newName: myPlayerName
+      });
+    }
+    showToast(`เปลี่ยนชื่อเป็น "${myPlayerName}" เรียบร้อย`, 'success');
+  }
+}
+
+function updateMyNameDisplay() {
+  const el = document.getElementById('display-my-player-name');
+  if (el) el.innerText = myPlayerName;
+}
+
+function getInviteUrl(roomId) {
+  const base = window.location.href.split('?')[0].split('#')[0];
+  return `${base}?room=${encodeURIComponent(roomId)}`;
+}
+
+function extractRoomIdFromInput(inputStr) {
+  if (!inputStr) return '';
+  const trimmed = inputStr.trim();
+  try {
+    if (trimmed.includes('?room=') || trimmed.includes('&room=')) {
+      const parsedUrl = new URL(trimmed.startsWith('http') ? trimmed : 'https://' + trimmed);
+      const r = parsedUrl.searchParams.get('room');
+      if (r) return r.toUpperCase();
+    }
+  } catch(e) {}
+  return trimmed.toUpperCase();
+}
+
 function createRoom() {
   SoundFx.init();
   myPlayerName = document.getElementById('input-username').value.trim() || 'Host';
@@ -241,17 +322,17 @@ function createRoom() {
     unoCalled: false
   }];
   updateLobbyPlayerSlots();
-  showToast(`สร้างห้องสำเร็จ! รหัส: ${shortId}`, 'success');
+  showToast(`สร้างห้องสำเร็จ! คัดลอกลิงก์ส่งให้เพื่อนได้ทันที`, 'success');
 }
 
-// Client: Join Existing Room
 function joinRoom() {
   SoundFx.init();
   myPlayerName = document.getElementById('input-username').value.trim() || 'Guest';
-  const targetRoomId = document.getElementById('input-room-code').value.trim().toUpperCase();
+  const rawInput = document.getElementById('input-room-code').value;
+  const targetRoomId = extractRoomIdFromInput(rawInput);
 
   if (!targetRoomId) {
-    showToast('กรุณากรอกรหัสห้อง (Room Code)', 'warning');
+    showToast('กรุณาวางลิงก์เชิญ หรือรหัสห้อง', 'warning');
     return;
   }
 
@@ -265,15 +346,14 @@ function joinRoom() {
     name: myPlayerName
   });
 
-  showToast(`กำลังเข้าร่วมห้อง ${targetRoomId}...`, 'info');
+  showToast(`กำลังเข้าร่วมผ่านลิงก์ห้อง ${targetRoomId}...`, 'info');
 }
 
 function openPlayerTab() {
-  const roomId = currentRoomCode || document.getElementById('room-code-display').innerText.trim();
-  if (!roomId || roomId === '---') return;
-  const url = window.location.origin + window.location.pathname + '?room=' + roomId;
-  window.open(url, '_blank');
-  showToast('เปิดแท็บใหม่แล้ว! ตั้งชื่อแล้วกด "เข้าเล่นห้องเพื่อน"', 'info');
+  const roomId = currentRoomCode || 'UNO-ROOM';
+  const inviteUrl = getInviteUrl(roomId);
+  window.open(inviteUrl, '_blank');
+  showToast('เปิดแท็บใหม่พร้อมลิงก์เชิญแล้ว! ตั้งชื่อแล้วกดเข้าร่วมได้เลย', 'info');
 }
 
 function removePlayerFromGame(playerId) {
@@ -293,22 +373,26 @@ function removePlayerFromGame(playerId) {
       if (gameState.turnIndex >= gameState.players.length) {
         gameState.turnIndex = 0;
       }
+      broadcastGameState();
+    } else {
+      updateLobbyPlayerSlots();
+      broadcastGameState();
     }
-    updateLobbyPlayerSlots();
-    broadcastGameState();
   }
 }
 
 function copyInviteLink() {
-  const roomId = currentRoomCode || document.getElementById('room-code-display').innerText.trim();
+  const roomId = currentRoomCode || 'UNO-ROOM';
+  const fullInviteLink = getInviteUrl(roomId);
+
   const el = document.createElement('textarea');
-  el.value = roomId;
+  el.value = fullInviteLink;
   document.body.appendChild(el);
   el.select();
   document.execCommand('copy');
   document.body.removeChild(el);
 
-  showToast(`คัดลอกรหัสห้อง ${roomId} แล้ว!`, 'success');
+  showToast(`คัดลอกลิงก์เชิญเรียบร้อย! ส่งให้เพื่อนเปิดในบราวเซอร์ได้เลย 🔗`, 'success');
 }
 
 function setupLobbyUIForRoom(roomId) {
@@ -316,7 +400,14 @@ function setupLobbyUIForRoom(roomId) {
   document.getElementById('panel-create').classList.add('hidden');
   document.getElementById('panel-join').classList.add('hidden');
   document.getElementById('panel-room-lobby').classList.remove('hidden');
-  document.getElementById('room-code-display').innerText = roomId;
+  updateMyNameDisplay();
+  
+  const fullInviteLink = getInviteUrl(roomId);
+  const linkDisplayEl = document.getElementById('room-link-display');
+  if (linkDisplayEl) {
+    linkDisplayEl.innerText = fullInviteLink;
+  }
+
   document.getElementById('btn-copy-link').classList.remove('hidden');
   document.getElementById('btn-leave-room').classList.remove('hidden');
 
@@ -392,26 +483,44 @@ function leaveRoom() {
 
 function handleHostReceivedData(data) {
   if (data.type === 'REQUEST_JOIN') {
-    if (gameState.players.length < 6 && !gameState.started) {
-      if (!gameState.players.some(p => p.id === data.id)) {
-        gameState.players.push({
+    if (gameState.players.length < 6) {
+      let existingPlayer = gameState.players.find(p => p.id === data.id);
+      if (!existingPlayer) {
+        const newPlayer = {
           id: data.id,
           name: data.name,
           isBot: false,
           hand: [],
           cardCount: 0,
           unoCalled: false
-        });
+        };
+
+        if (gameState.started) {
+          drawCardsForPlayer(newPlayer, 7);
+          showToast(`${data.name} เข้าร่วมและพร้อมเล่นทันที! 🎮`, 'success');
+        } else {
+          showToast(`${data.name} เข้าร่วมห้องแล้ว! 👋`, 'success');
+        }
+
+        gameState.players.push(newPlayer);
         updateLobbyPlayerSlots();
+        broadcastGameState('cardDraw');
+      } else {
         broadcastGameState();
-        showToast(`${data.name} เข้าร่วมห้องแล้ว!`, 'success');
       }
     } else {
       sendChannelMessage({
         type: 'ERROR_MSG',
         targetId: data.id,
-        message: 'ห้องเต็มแล้ว (สูงสุด 6 คน) หรือเกมเริ่มแล้ว'
+        message: 'ห้องเต็มแล้ว (สูงสุด 6 คน)'
       });
+    }
+  } else if (data.type === 'REQUEST_RENAME') {
+    const player = gameState.players.find(p => p.id === data.playerId);
+    if (player) {
+      player.name = data.newName;
+      updateLobbyPlayerSlots();
+      broadcastGameState();
     }
   } else if (data.type === 'ACTION_PLAY_CARD') {
     executePlayCard(data.playerId, data.cardIndex, data.chosenColor, data.targetPlayerId);
@@ -428,6 +537,11 @@ function handleClientReceivedData(data) {
   if (data.targetId && data.targetId !== myPlayerId) return;
 
   if (data.type === 'SYNC_STATE') {
+    if (autoJoinInterval) {
+      clearInterval(autoJoinInterval);
+      autoJoinInterval = null;
+    }
+
     gameState.started = data.state.started;
     gameState.topCard = data.state.topCard;
     gameState.currentColor = data.state.currentColor;
