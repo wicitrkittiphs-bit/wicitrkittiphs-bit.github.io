@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>UNO Arena Online</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="bg"></div>
+<header><div class="logo">UNO<span>ARENA</span></div><div id="roomInfo">ยังไม่ได้เข้าห้อง</div></header>
+<main>
+<section id="lobby" class="panel">
+  <h1>UNO Arena Online</h1><p>เล่นพร้อมกันได้ <b>2–6 คน</b> • ห้องส่วนตัว • เล่นกับเพื่อนได้</p>
+  <input id="name" placeholder="ชื่อผู้เล่น" maxlength="18">
+  <div class="row"><button onclick="createRoom()">สร้างห้อง</button><input id="code" placeholder="รหัสห้อง"><button onclick="joinRoom()">เข้าห้อง</button></div>
+  <div id="playersLobby" class="players"></div>
+  <button id="startBtn" class="start" onclick="startGame()">เริ่มเกม</button>
+  <div id="msg"></div>
+</section>
+
+<section id="game" hidden>
+  <div class="topbar"><div><b>ห้อง <span id="codeView"></span></b> <button onclick="copyCode()">คัดลอกรหัส</button></div><div id="status"></div></div>
+  <div id="players" class="players table"></div>
+  <div class="board">
+    <div class="deck">DRAW</div>
+    <div id="topCard"></div>
+    <div class="direction" id="direction">↻</div>
+  </div>
+  <div class="actions"><button onclick="draw()">จั่วการ์ด</button><button onclick="swapMode()">🔄 สลับการ์ดกับเพื่อน</button></div>
+  <div id="hand" class="hand"></div>
+  <div id="swapPanel" class="swap" hidden><b>เลือกเพื่อนที่จะสลับมือ</b><div id="swapButtons"></div></div>
+</section>
+</main>
+<script src="/socket.io/socket.io.js"></script><script src="app.js"></script>
+</body></html>
